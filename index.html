@@ -94,6 +94,9 @@
         <span id="era-display">Caveman Era</span>
       </div>
       <div class="top-buttons">
+        <select id="city-jump-select" class="city-jump-dropdown" onchange="UI.jumpToCity(this.value)" title="Jump to City">
+          <option value="">🏛 Cities</option>
+        </select>
         <button class="btn-sm" onclick="UI.showTechTree()" title="Tech Tree">🔬</button>
         <button class="btn-sm" onclick="UI.showEncyclopedia()" title="Book of Apollo">📖</button>
         <button class="btn-sm" onclick="UI.showSaveGame()" title="Save Game">💾</button>

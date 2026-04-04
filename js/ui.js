@@ -178,6 +178,31 @@ const UI = {
         tooltip.classList.add('hidden');
       };
     }
+
+    // Update city jump dropdown
+    const citySelect = document.getElementById('city-jump-select');
+    if (citySelect) {
+      const prev = citySelect.value;
+      citySelect.innerHTML = '<option value="">🏛 Cities</option>';
+      for (const city of p.cities) {
+        const opt = document.createElement('option');
+        opt.value = city.id;
+        opt.textContent = `${city.name} (pop ${city.population})`;
+        citySelect.appendChild(opt);
+      }
+      citySelect.value = prev;
+    }
+  },
+
+  jumpToCity(cityId) {
+    if (!cityId || !Game.state) return;
+    const city = Game.findCityById(parseInt(cityId));
+    if (!city) return;
+    Renderer.centerOn(city.r, city.c);
+    UI.showCityPanel(city);
+    // Reset dropdown to placeholder
+    const sel = document.getElementById('city-jump-select');
+    if (sel) sel.value = '';
   },
 
   updateRightPanel() {
