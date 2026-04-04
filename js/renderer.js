@@ -1995,6 +1995,22 @@ const Renderer = {
     this.updateMinimap();
   },
 
+  minimapClick(e) {
+    if (!Game.state) return;
+    const canvas = document.getElementById('minimap');
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const scaleX = canvas.width / Game.state.mapWidth;
+    const scaleY = canvas.height / Game.state.mapHeight;
+    const tileCol = mx / scaleX;
+    const tileRow = my / scaleY;
+    this.camera.x = tileCol * this.tileSize;
+    this.camera.y = tileRow * this.tileSize;
+    this.render();
+    this.updateMinimap();
+  },
+
   // ========== MINIMAP ==========
 
   updateMinimap() {
