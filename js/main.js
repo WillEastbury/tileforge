@@ -46,6 +46,14 @@ function selectTech(techId) {
   UI.notify('Researching: ' + TECHS.find(t => t.id === techId).name);
 }
 
+function cancelResearch() {
+  const p = Game.state.players[0];
+  p.currentResearch = null;
+  p.researchProgress = 0;
+  UI.renderTechTree();
+  UI.notify('Research cancelled.');
+}
+
 function buildInCity(cityId, type, itemId) {
   const city = Game.findCityById(cityId);
   if (!city || city.owner !== 0) return;

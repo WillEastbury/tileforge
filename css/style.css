@@ -258,3 +258,22 @@ html, body { height: 100%; overflow: hidden; font-family: 'Segoe UI', system-ui,
 #ency-detail .badge-domain { background: rgba(76,175,80,0.2); border: 1px solid var(--green); color: var(--green); }
 .ency-ref { cursor: pointer; color: var(--accent2); font-size: 11px; vertical-align: super; margin-left: 2px; }
 .ency-ref:hover { color: #fff; }
+
+/* Tech Tree Buttons */
+.tech-buttons { display: flex; gap: 4px; margin-top: 4px; }
+.tech-btn-research { padding: 2px 8px; font-size: 11px; font-weight: 600; background: var(--green); color: #fff; border: none; border-radius: 3px; cursor: pointer; }
+.tech-btn-research:hover { background: #66bb6a; }
+.tech-btn-cancel { padding: 2px 8px; font-size: 11px; font-weight: 600; background: #e07020; color: #fff; border: none; border-radius: 3px; cursor: pointer; }
+.tech-btn-cancel:hover { background: #f08030; }
+.tech-btn-ency { padding: 2px 6px; font-size: 11px; background: rgba(255,255,255,0.1); color: var(--text-dim); border: 1px solid var(--border); border-radius: 3px; cursor: pointer; }
+.tech-btn-ency:hover { background: rgba(255,255,255,0.2); color: #fff; }
+
+/* Resource Tooltip */
+.resource-tooltip { position: fixed; z-index: 300; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; min-width: 180px; font-size: 13px; box-shadow: 0 4px 16px rgba(0,0,0,0.6); pointer-events: none; }
+.resource-tooltip.hidden { display: none; }
+.rt-header { font-size: 14px; margin-bottom: 2px; }
+.rt-header b { color: var(--gold); }
+.rt-sep { border-top: 1px solid var(--border); margin: 6px 0; }
+.rt-row { display: flex; justify-content: space-between; gap: 16px; padding: 1px 0; }
+.rt-row span:last-child { color: var(--gold); font-weight: 600; }
+.rt-net { margin-top: 2px; font-weight: 700; }

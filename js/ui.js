@@ -102,8 +102,9 @@ const UI = {
     const p = Game.state.players[0];
     if (!p) return;
 
-    // Calculate totals
+    // Calculate totals and per-city breakdowns
     let food = 0, prod = 0, gold = 0, sci = 0, cul = 0, hist = 0;
+    const cityBreakdowns = [];
     for (const city of p.cities) {
       const y = Game.getCityYields(city);
       food += y.food;
@@ -111,7 +112,14 @@ const UI = {
       gold += y.gold;
       sci += y.sci;
       cul += y.cul;
+      cityBreakdowns.push({ name: city.name, food: y.food, prod: y.prod, gold: y.gold, sci: y.sci, cul: y.cul });
     }
+
+    // Unit maintenance (military units with str > 0)
+    const unitMaint = p.units.filter(u => {
+      const ut = Game.getUnitType(u);
+      return ut.str > 0;
+    }).length;
 
     document.querySelector('#res-food b').textContent = food;
     document.querySelector('#res-prod b').textContent = prod;
@@ -122,6 +130,45 @@ const UI = {
 
     document.getElementById('turn-display').textContent = 'Turn ' + Game.state.turn;
     document.getElementById('era-display').textContent = ERA_ICONS[p.era] + ' ' + ERA_NAMES[p.era] + ' Era';
+
+    // Resource tooltip hover handlers
+    const tooltip = document.getElementById('resource-tooltip');
+    const resMap = [
+      { el: '#res-food',    icon: '🌾', label: 'Food',       key: 'food', total: food },
+      { el: '#res-prod',    icon: '⚙️', label: 'Production', key: 'prod', total: prod },
+      { el: '#res-money',   icon: '💰', label: 'Money',      key: 'gold', total: gold, isMoney: true },
+      { el: '#res-science', icon: '🔬', label: 'Science',    key: 'sci',  total: sci },
+      { el: '#res-culture', icon: '🎭', label: 'Culture',    key: 'cul',  total: cul },
+    ];
+
+    for (const r of resMap) {
+      const span = document.querySelector(r.el);
+      span.onmouseenter = (e) => {
+        let lines = `<div class="rt-header">${r.icon} ${r.label}: <b>${r.isMoney ? Math.floor(p.gold) + ' treasury' : r.total + ' total'}</b></div>`;
+        lines += '<div class="rt-sep"></div>';
+        if (cityBreakdowns.length === 0) {
+          lines += '<div class="rt-row"><span>No cities</span></div>';
+        } else {
+          for (const cb of cityBreakdowns) {
+            lines += `<div class="rt-row"><span>${cb.name}</span><span>${cb[r.key]}</span></div>`;
+          }
+        }
+        if (r.isMoney) {
+          const netIncome = gold - unitMaint;
+          lines += '<div class="rt-sep"></div>';
+          lines += `<div class="rt-row"><span>Unit upkeep</span><span style="color:var(--red)">-${unitMaint}</span></div>`;
+          lines += `<div class="rt-row rt-net"><span>Net income</span><span style="color:${netIncome >= 0 ? 'var(--green)' : 'var(--red)'}">${netIncome >= 0 ? '+' : ''}${netIncome}</span></div>`;
+        }
+        tooltip.innerHTML = lines;
+        tooltip.classList.remove('hidden');
+        const rect = span.getBoundingClientRect();
+        tooltip.style.left = rect.left + 'px';
+        tooltip.style.top = (rect.bottom + 6) + 'px';
+      };
+      span.onmouseleave = () => {
+        tooltip.classList.add('hidden');
+      };
+    }
   },
 
   updateRightPanel() {
@@ -421,9 +468,14 @@ const UI = {
           ? Math.max(1, Math.ceil((tech.cost - p.researchProgress) / Math.max(1, this.getPlayerScience())))
           : '';
 
-        html += `<div class="tech-item ${cls}" ${cls === 'available' ? `onclick="selectTech('${tech.id}')"` : ''}>
+        html += `<div class="tech-item ${cls}">
           <div class="tech-name">${tech.name}</div>
           <div class="tech-cost">${cls === 'current' ? `Researching... ${turns}t` : `🔬 ${tech.cost}`}</div>
+          <div class="tech-buttons">
+            ${cls === 'available' ? `<button class="tech-btn-research" onclick="event.stopPropagation();selectTech('${tech.id}')">Research</button>` : ''}
+            ${cls === 'current' ? `<button class="tech-btn-cancel" onclick="event.stopPropagation();cancelResearch()">Cancel</button>` : ''}
+            <button class="tech-btn-ency" onclick="event.stopPropagation();UI.showEncyclopedia('technologies','${tech.id}')" title="Tileopedia">📖</button>
+          </div>
         </div>`;
       }
 

@@ -15,6 +15,8 @@ const Renderer = {
   overlaySprites: [],
   fogSprites: [],
   highlightSprites: [],
+  terrainTextures: [],
+  terrainFogTextures: [],
   initialized: false,
   animations: [],
   animating: false,
@@ -56,6 +58,7 @@ const Renderer = {
     this.mapContainer.addChild(this.highlightLayer);
     this.mapContainer.addChild(this.fogLayer);
 
+    this.generateTerrainTextures();
     this.setupInteraction(container);
     this.initialized = true;
 
@@ -64,6 +67,335 @@ const Renderer = {
       this.app.renderer.resize(r.width, r.height);
       this.render();
     });
+  },
+
+  generateTerrainTextures() {
+    const ts = this.tileSize;
+    const renderer = this.app.renderer;
+
+    const rr = (c) => (c >> 16) & 0xFF;
+    const gg = (c) => (c >> 8) & 0xFF;
+    const bb = (c) => c & 0xFF;
+    const rgb = (r, g, b) => ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
+    const mix = (c1, c2, t) => rgb(
+      Math.round(rr(c1) + (rr(c2) - rr(c1)) * t),
+      Math.round(gg(c1) + (gg(c2) - gg(c1)) * t),
+      Math.round(bb(c1) + (bb(c2) - bb(c1)) * t)
+    );
+    // Seeded pseudo-random for deterministic textures
+    const seed = (s) => { let v = s; return () => { v = (v * 1664525 + 1013904223) & 0xFFFFFFFF; return (v >>> 0) / 4294967296; }; };
+
+    for (let id = 0; id < 20; id++) {
+      const terrain = TERRAINS[id];
+      const base = terrain.color;
+      const g = new PIXI.Graphics();
+      const rng = seed(id * 9973 + 7);
+
+      // Fill base color
+      g.beginFill(base);
+      g.drawRect(0, 0, ts, ts);
+      g.endFill();
+
+      switch (id) {
+        case 0: { // Ice Sheet — crack lines + speckles
+          const lighter = mix(base, 0xFFFFFF, 0.3);
+          for (let i = 0; i < 3; i++) {
+            g.lineStyle(1, mix(0x6688CC, base, 0.4), 0.6);
+            const sx = rng() * ts, sy = rng() * ts;
+            g.moveTo(sx, sy);
+            g.lineTo(sx + (rng() - 0.5) * 20, sy + (rng() - 0.5) * 20);
+            g.lineTo(sx + (rng() - 0.5) * 24, sy + (rng() - 0.5) * 24);
+          }
+          g.lineStyle(0);
+          for (let i = 0; i < 12; i++) {
+            g.beginFill(lighter, 0.5);
+            g.drawCircle(rng() * ts, rng() * ts, 1);
+            g.endFill();
+          }
+          break;
+        }
+        case 1: { // Tundra — lichen dot clusters
+          for (let i = 0; i < 6; i++) {
+            const cx = rng() * ts, cy = rng() * ts;
+            const clr = rng() > 0.5 ? 0x6B5B3A : 0x7A9A60;
+            for (let j = 0; j < 3; j++) {
+              g.beginFill(clr, 0.7);
+              g.drawCircle(cx + (rng() - 0.5) * 5, cy + (rng() - 0.5) * 5, 1);
+              g.endFill();
+            }
+          }
+          break;
+        }
+        case 2: { // Taiga — triangle trees
+          const dark = mix(base, 0x001000, 0.3);
+          for (let i = 0; i < 4; i++) {
+            const tx = 4 + rng() * (ts - 8), ty = 6 + rng() * (ts - 10);
+            g.beginFill(dark, 0.8);
+            g.moveTo(tx, ty - 5);
+            g.lineTo(tx - 3, ty + 3);
+            g.lineTo(tx + 3, ty + 3);
+            g.closePath();
+            g.endFill();
+            g.beginFill(0x3A2010, 0.8);
+            g.drawRect(tx - 0.5, ty + 3, 1, 2);
+            g.endFill();
+          }
+          break;
+        }
+        case 3: { // Frozen Coast — ice chunks + water
+          for (let i = 0; i < 3; i++) {
+            g.beginFill(0xD0E8F8, 0.6);
+            const cx = rng() * ts, cy = rng() * ts;
+            g.drawPolygon([cx, cy - 3, cx - 4, cy + 2, cx + 4, cy + 2]);
+            g.endFill();
+          }
+          for (let i = 0; i < 4; i++) {
+            g.beginFill(0x5080B0, 0.3);
+            g.drawEllipse(rng() * ts, rng() * ts, 3 + rng() * 3, 1.5);
+            g.endFill();
+          }
+          break;
+        }
+        case 4: { // Grassland — grass line marks
+          const darker = mix(base, 0x003300, 0.25);
+          g.lineStyle(1, darker, 0.5);
+          for (let i = 0; i < 14; i++) {
+            const gx = rng() * ts, gy = rng() * ts;
+            g.moveTo(gx, gy);
+            g.lineTo(gx + (rng() - 0.5) * 2, gy - 3 - rng() * 2);
+          }
+          g.lineStyle(0);
+          break;
+        }
+        case 5: { // Plains — wheat stalks
+          const stalkClr = mix(base, 0x806020, 0.3);
+          g.lineStyle(1, stalkClr, 0.6);
+          for (let i = 0; i < 8; i++) {
+            const sx = rng() * ts, sy = 8 + rng() * (ts - 12);
+            g.moveTo(sx, sy + 4);
+            g.lineTo(sx, sy - 3);
+            g.lineStyle(0);
+            g.beginFill(mix(stalkClr, 0xCCBB44, 0.5), 0.7);
+            g.drawEllipse(sx, sy - 4, 1.5, 2);
+            g.endFill();
+            g.lineStyle(1, stalkClr, 0.6);
+          }
+          g.lineStyle(0);
+          break;
+        }
+        case 6: { // Forest — tree canopy circles
+          for (let i = 0; i < 3; i++) {
+            const cx = 6 + rng() * (ts - 12), cy = 6 + rng() * (ts - 12);
+            const rad = 4 + rng() * 2;
+            g.beginFill(mix(base, 0x002200, 0.3), 0.8);
+            g.drawCircle(cx, cy, rad);
+            g.endFill();
+            g.beginFill(mix(base, 0x88FF88, 0.25), 0.5);
+            g.drawCircle(cx - 1, cy - 1, rad * 0.5);
+            g.endFill();
+          }
+          break;
+        }
+        case 7: { // Hills — contour lines
+          g.lineStyle(1, mix(base, 0x000000, 0.2), 0.4);
+          for (let i = 0; i < 3; i++) {
+            const cy = 6 + i * 9;
+            g.moveTo(2, cy + 4);
+            g.quadraticCurveTo(ts * 0.3, cy - 2, ts * 0.5, cy + 2);
+            g.quadraticCurveTo(ts * 0.7, cy + 6, ts - 2, cy);
+          }
+          g.lineStyle(0);
+          break;
+        }
+        case 8: { // Mountains — white-tipped peaks
+          for (let i = 0; i < 2; i++) {
+            const mx = 6 + rng() * (ts - 12), my = ts - 4;
+            const peak = 4 + rng() * 4;
+            g.beginFill(mix(base, 0x444455, 0.2), 0.9);
+            g.moveTo(mx, my - peak * 2.5);
+            g.lineTo(mx - 7, my);
+            g.lineTo(mx + 7, my);
+            g.closePath();
+            g.endFill();
+            // Snow cap
+            g.beginFill(0xF0F0FF, 0.85);
+            g.moveTo(mx, my - peak * 2.5);
+            g.lineTo(mx - 2.5, my - peak * 1.5);
+            g.lineTo(mx + 2.5, my - peak * 1.5);
+            g.closePath();
+            g.endFill();
+          }
+          break;
+        }
+        case 9: { // Wetland — wavy water lines + reeds
+          g.lineStyle(1, 0x3A6A8A, 0.4);
+          for (let i = 0; i < 3; i++) {
+            const wy = 6 + i * 9;
+            g.moveTo(0, wy);
+            for (let x = 0; x <= ts; x += 4) {
+              g.lineTo(x, wy + Math.sin(x * 0.4 + i) * 2);
+            }
+          }
+          g.lineStyle(1, 0x5A7040, 0.7);
+          for (let i = 0; i < 4; i++) {
+            const rx = rng() * ts, ry = rng() * ts;
+            g.moveTo(rx, ry);
+            g.lineTo(rx, ry - 5);
+          }
+          g.lineStyle(0);
+          break;
+        }
+        case 10: { // Desert — dune curves
+          g.lineStyle(1, mix(base, 0xFFEEAA, 0.3), 0.4);
+          for (let i = 0; i < 3; i++) {
+            const dy = 5 + i * 10;
+            g.moveTo(0, dy);
+            g.quadraticCurveTo(ts * 0.25, dy - 4, ts * 0.5, dy);
+            g.quadraticCurveTo(ts * 0.75, dy + 4, ts, dy);
+          }
+          g.lineStyle(0);
+          break;
+        }
+        case 11: { // Savanna — acacia tree silhouette
+          const trunk = 0x6A5030;
+          const canopy = mix(base, 0x556020, 0.3);
+          const tx = ts * 0.5, ty = ts * 0.65;
+          g.beginFill(trunk, 0.8);
+          g.drawRect(tx - 1, ty, 2, ts * 0.3);
+          g.endFill();
+          g.beginFill(canopy, 0.7);
+          g.drawEllipse(tx, ty - 1, 8, 3);
+          g.endFill();
+          break;
+        }
+        case 12: { // Mesa — horizontal stripe bands
+          for (let i = 0; i < 5; i++) {
+            const sy = i * 7;
+            const stripe = i % 2 === 0 ? mix(base, 0xAA6622, 0.2) : mix(base, 0xFFBB77, 0.15);
+            g.beginFill(stripe, 0.5);
+            g.drawRect(0, sy, ts, 6);
+            g.endFill();
+          }
+          break;
+        }
+        case 13: { // Oasis — sandy border, green circle, blue water
+          g.beginFill(mix(base, 0xD4C088, 0.5), 0.4);
+          g.drawRect(0, 0, ts, ts);
+          g.endFill();
+          g.beginFill(0x50A050, 0.7);
+          g.drawCircle(ts / 2, ts / 2, 9);
+          g.endFill();
+          g.beginFill(0x3388CC, 0.8);
+          g.drawCircle(ts / 2, ts / 2, 4);
+          g.endFill();
+          break;
+        }
+        case 14: { // Jungle — dense overlapping leaf/vine patterns
+          for (let i = 0; i < 8; i++) {
+            const lx = rng() * ts, ly = rng() * ts;
+            g.beginFill(mix(base, rng() > 0.5 ? 0x003810 : 0x105020, 0.3), 0.6);
+            g.drawEllipse(lx, ly, 3 + rng() * 3, 2 + rng() * 2);
+            g.endFill();
+          }
+          g.lineStyle(1, 0x0A3A10, 0.3);
+          for (let i = 0; i < 3; i++) {
+            const vx = rng() * ts;
+            g.moveTo(vx, 0);
+            g.quadraticCurveTo(vx + (rng() - 0.5) * 10, ts * 0.5, vx + (rng() - 0.5) * 8, ts);
+          }
+          g.lineStyle(0);
+          break;
+        }
+        case 15: { // Volcanic — orange/red glow spots
+          for (let i = 0; i < 5; i++) {
+            const lx = rng() * ts, ly = rng() * ts;
+            const glowClr = rng() > 0.5 ? 0xCC4400 : 0xFF6600;
+            g.beginFill(glowClr, 0.3 + rng() * 0.3);
+            g.drawCircle(lx, ly, 2 + rng() * 2);
+            g.endFill();
+          }
+          g.beginFill(0xFF3300, 0.15);
+          g.drawCircle(ts * 0.5, ts * 0.5, 6);
+          g.endFill();
+          break;
+        }
+        case 16: { // Coast — subtle wave arcs
+          g.lineStyle(1, mix(base, 0x88CCEE, 0.4), 0.35);
+          for (let i = 0; i < 4; i++) {
+            const wy = 4 + i * 8;
+            g.moveTo(0, wy);
+            g.quadraticCurveTo(ts * 0.25, wy - 3, ts * 0.5, wy);
+            g.quadraticCurveTo(ts * 0.75, wy + 3, ts, wy);
+          }
+          g.lineStyle(0);
+          break;
+        }
+        case 17: { // Ocean — darker wave patterns
+          g.lineStyle(1, mix(base, 0x0A1A44, 0.3), 0.4);
+          for (let i = 0; i < 4; i++) {
+            const wy = 3 + i * 8;
+            g.moveTo(0, wy);
+            g.quadraticCurveTo(ts * 0.3, wy - 3, ts * 0.5, wy);
+            g.quadraticCurveTo(ts * 0.7, wy + 3, ts, wy);
+          }
+          g.lineStyle(0);
+          break;
+        }
+        case 18: { // Reef — coral blobs
+          for (let i = 0; i < 5; i++) {
+            const cx = 3 + rng() * (ts - 6), cy = 3 + rng() * (ts - 6);
+            const clr = rng() > 0.5 ? 0xDD6688 : 0xDD8844;
+            g.beginFill(clr, 0.6);
+            g.drawCircle(cx, cy, 1.5 + rng() * 2);
+            g.endFill();
+          }
+          break;
+        }
+        case 19: { // River Delta — branching blue river lines
+          g.lineStyle(1, 0x3388BB, 0.6);
+          const startX = ts * 0.5;
+          g.moveTo(startX, 0);
+          g.lineTo(startX, ts * 0.35);
+          // Branches
+          g.moveTo(startX, ts * 0.35);
+          g.lineTo(startX - 8, ts * 0.7);
+          g.lineTo(startX - 12, ts);
+          g.moveTo(startX, ts * 0.35);
+          g.lineTo(startX + 3, ts * 0.65);
+          g.lineTo(startX + 10, ts);
+          g.moveTo(startX + 3, ts * 0.65);
+          g.lineTo(startX - 2, ts);
+          g.lineStyle(0);
+          break;
+        }
+      }
+
+      // Render normal texture
+      const rt = PIXI.RenderTexture.create({ width: ts, height: ts });
+      renderer.render(g, { renderTexture: rt });
+      this.terrainTextures[id] = rt;
+
+      // Render fog-dimmed variant (multiply by 0.4)
+      const fogG = new PIXI.Graphics();
+      fogG.beginFill(base);
+      fogG.drawRect(0, 0, ts, ts);
+      fogG.endFill();
+
+      // Redraw the same pattern but with dimmed colors via a dark overlay
+      const fogRt = PIXI.RenderTexture.create({ width: ts, height: ts });
+      renderer.render(g, { renderTexture: fogRt });
+      // Apply darkening overlay
+      const overlay = new PIXI.Graphics();
+      overlay.beginFill(0x000000, 0.6);
+      overlay.drawRect(0, 0, ts, ts);
+      overlay.endFill();
+      renderer.render(overlay, { renderTexture: fogRt, clear: false });
+      this.terrainFogTextures[id] = fogRt;
+
+      g.destroy(true);
+      fogG.destroy(true);
+      overlay.destroy(true);
+    }
   },
 
   setupInteraction(container) {
@@ -335,20 +667,21 @@ const Renderer = {
 
         const terrain = TERRAINS[tile.terrain];
 
-        // Terrain tile
-        const tileGfx = new PIXI.Graphics();
-        let color = terrain.color;
-        if (fog === 1) {
-          // Explored but not visible — darken
-          const r2 = ((color >> 16) & 0xFF) * 0.4;
-          const g2 = ((color >> 8) & 0xFF) * 0.4;
-          const b2 = (color & 0xFF) * 0.4;
-          color = (Math.floor(r2) << 16) | (Math.floor(g2) << 8) | Math.floor(b2);
-        }
-        tileGfx.beginFill(color);
-        tileGfx.drawRect(px, py, ts - 1, ts - 1);
-        tileGfx.endFill();
-        this.terrainLayer.addChild(tileGfx);
+        // Terrain tile — use pre-generated textured sprites
+        const tex = fog === 1 ? this.terrainFogTextures[tile.terrain] : this.terrainTextures[tile.terrain];
+        const tileSprite = new PIXI.Sprite(tex);
+        tileSprite.position.set(px, py);
+        // Subtle per-tile variation via hash of (r, c)
+        const hash = ((r * 7919 + c * 6271) & 0xFFFF) / 65535;
+        const tintAmt = hash * 0.08;
+        const tR = Math.round(255 + (((terrain.color >> 16) & 0xFF) - 255) * tintAmt);
+        const tG = Math.round(255 + (((terrain.color >> 8) & 0xFF) - 255) * tintAmt);
+        const tB = Math.round(255 + ((terrain.color & 0xFF) - 255) * tintAmt);
+        tileSprite.tint = (tR << 16) | (tG << 8) | tB;
+        tileSprite.rotation = (hash - 0.5) * 0.06;
+        tileSprite.anchor.set(0.5);
+        tileSprite.position.set(px + ts / 2, py + ts / 2);
+        this.terrainLayer.addChild(tileSprite);
 
         // Territory border coloring
         if (tile.owner >= 0 && fog === 2) {
