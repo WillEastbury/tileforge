@@ -72,7 +72,7 @@
       <h2 id="save-load-title">Load Game</h2>
       <div id="save-slots"></div>
       <div class="form-buttons">
-        <button class="btn btn-secondary" onclick="UI.showMainMenu()">Back</button>
+        <button class="btn btn-secondary" onclick="UI._saveOverlay ? UI.closeSaveOverlay() : UI.showMainMenu()">Back</button>
       </div>
     </div>
   </div>

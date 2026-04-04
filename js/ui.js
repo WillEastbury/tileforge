@@ -26,17 +26,26 @@ const UI = {
   },
 
   showSaveGame() {
-    document.getElementById('save-load-screen').classList.add('active');
-    document.getElementById('game-screen').classList.add('active');
+    const screen = document.getElementById('save-load-screen');
+    screen.classList.add('active', 'overlay-mode');
     document.getElementById('save-load-title').textContent = 'Save Game';
     this.renderSaveSlots('save');
+    this._saveOverlay = true;
   },
 
   showLoadGameInGame() {
-    document.getElementById('save-load-screen').classList.add('active');
+    const screen = document.getElementById('save-load-screen');
+    screen.classList.add('active', 'overlay-mode');
     document.getElementById('save-load-title').textContent = 'Load Game';
     this.renderSaveSlots('load');
+    this._saveOverlay = true;
     this.closeMenu();
+  },
+
+  closeSaveOverlay() {
+    const screen = document.getElementById('save-load-screen');
+    screen.classList.remove('active', 'overlay-mode');
+    this._saveOverlay = false;
   },
 
   renderSaveSlots(mode) {
