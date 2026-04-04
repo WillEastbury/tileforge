@@ -1198,25 +1198,11 @@ const Renderer = {
 
   getCardinalNeighborTerrains(r, c) {
     const h = Game.state.mapHeight;
-    const w = Game.rowWidths[r];
-    // East (wraps)
+    const w = Game.state.mapWidth;
     const eT = Game.mapData[r][(c + 1) % w].terrain;
-    // West (wraps)
     const wT = Game.mapData[r][(c - 1 + w) % w].terrain;
-    // North (r-1) — treat map edge as ocean (17)
-    let nT = 17;
-    if (r > 0) {
-      const nw = Game.rowWidths[r - 1];
-      const nc = Math.round(c * nw / w) % nw;
-      nT = Game.mapData[r - 1][nc].terrain;
-    }
-    // South (r+1) — treat map edge as ocean (17)
-    let sT = 17;
-    if (r < h - 1) {
-      const sw = Game.rowWidths[r + 1];
-      const sc = Math.round(c * sw / w) % sw;
-      sT = Game.mapData[r + 1][sc].terrain;
-    }
+    const nT = Game.mapData[(r - 1 + h) % h][c].terrain;
+    const sT = Game.mapData[(r + 1) % h][c].terrain;
     return [nT, eT, sT, wT];
   },
 

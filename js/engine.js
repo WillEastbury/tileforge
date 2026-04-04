@@ -95,8 +95,7 @@ const Game = {
     this.mapData = [];
     this.rowWidths = [];
     for (let r = 0; r < mapHeight; r++) {
-      const lat = -90 + (r + 0.5) * (180 / mapHeight);
-      const w = Math.max(1, Math.round(mapWidth * Math.cos(lat * Math.PI / 180)));
+      const w = mapWidth;
       this.rowWidths.push(w);
       const row = [];
       for (let c = 0; c < w; c++) {
@@ -231,55 +230,36 @@ const Game = {
 
   getNeighbors(r, c) {
     const h = this.state.mapHeight;
+    const w = this.state.mapWidth;
     const results = [];
-    // East
-    const ew = this.rowWidths[r];
-    results.push({r, c: (c + 1) % ew});
-    // West
-    results.push({r, c: (c - 1 + ew) % ew});
-    // North
-    if (r < h - 1) {
-      const nw = this.rowWidths[r + 1];
-      const nc = Math.round(c * nw / ew) % nw;
-      results.push({r: r + 1, c: nc});
-    }
-    // South
-    if (r > 0) {
-      const sw = this.rowWidths[r - 1];
-      const sc = Math.round(c * sw / ew) % sw;
-      results.push({r: r - 1, c: sc});
-    }
+    // E, W (wrap horizontally)
+    results.push({r, c: (c + 1) % w});
+    results.push({r, c: (c - 1 + w) % w});
+    // N, S (wrap vertically)
+    results.push({r: (r + 1) % h, c});
+    results.push({r: (r - 1 + h) % h, c});
     // Diagonals (NE, NW, SE, SW)
-    if (r < h - 1) {
-      const nw = this.rowWidths[r + 1];
-      const nc = Math.round(c * nw / ew);
-      results.push({r: r+1, c: (nc + 1) % nw});
-      results.push({r: r+1, c: (nc - 1 + nw) % nw});
-    }
-    if (r > 0) {
-      const sw = this.rowWidths[r - 1];
-      const sc = Math.round(c * sw / ew);
-      results.push({r: r-1, c: (sc + 1) % sw});
-      results.push({r: r-1, c: (sc - 1 + sw) % sw});
-    }
+    const nr = (r + 1) % h, sr = (r - 1 + h) % h;
+    results.push({r: nr, c: (c + 1) % w});
+    results.push({r: nr, c: (c - 1 + w) % w});
+    results.push({r: sr, c: (c + 1) % w});
+    results.push({r: sr, c: (c - 1 + w) % w});
     return results;
   },
 
   getTile(r, c) {
-    if (r < 0 || r >= this.state.mapHeight) return null;
-    const w = this.rowWidths[r];
-    return this.mapData[r][((c % w) + w) % w];
+    const h = this.state.mapHeight, w = this.state.mapWidth;
+    r = ((r % h) + h) % h;
+    c = ((c % w) + w) % w;
+    return this.mapData[r][c];
   },
 
   tileDist(r1, c1, r2, c2) {
-    // Approximate distance on spherical grid
-    const w1 = this.rowWidths[r1], w2 = this.rowWidths[r2];
-    const lon1 = c1 / w1, lon2 = c2 / w2;
-    let dLon = Math.abs(lon1 - lon2);
-    if (dLon > 0.5) dLon = 1 - dLon;
-    const avgW = (w1 + w2) / 2;
-    const dx = dLon * avgW;
-    const dy = Math.abs(r1 - r2);
+    const w = this.state.mapWidth, h = this.state.mapHeight;
+    let dx = Math.abs(c1 - c2);
+    if (dx > w / 2) dx = w - dx;
+    let dy = Math.abs(r1 - r2);
+    if (dy > h / 2) dy = h - dy;
     return Math.sqrt(dx * dx + dy * dy);
   },
 
