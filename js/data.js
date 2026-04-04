@@ -435,6 +435,19 @@ const WONDERS = [
   {id:'ark',            name:'Ark of Civilization',   era:'mars',       cost:180, req:'orbital',        desc:'+100% History all cities', histMod:1.00, flavor:'A vessel carrying the sum total of human knowledge, culture, and genetic heritage toward the stars. The Ark of Civilization ensures that even if Earth falls silent, humanity\'s story will continue.'},
 ];
 
+// Tile improvements — built by civilian units (Gatherer, Worker, Engineer)
+const IMPROVEMENTS = [
+  {id:'gathering_camp', name:'Gathering Camp', icon:'⛺', turns:3, req:null,             terrains:[1,2,6,9,14], yields:{food:1,prod:1,gold:0}, desc:'A basic camp where your people collect food, furs, and wood from the surrounding wilderness.'},
+  {id:'farm',           name:'Farm',           icon:'🌾', turns:4, req:'agriculture',    terrains:[4,5,11,19],  yields:{food:2,prod:0,gold:0}, desc:'Cultivated fields that provide a steady food supply. The backbone of any growing civilization.'},
+  {id:'mine',           name:'Mine',           icon:'⛏️', turns:5, req:'mining',          terrains:[7,8,15],     yields:{food:0,prod:2,gold:0}, desc:'Tunnels dug into rock to extract ore, stone, and precious minerals.'},
+  {id:'quarry',         name:'Quarry',         icon:'🪨', turns:4, req:'mining',          terrains:[7,8,12],     yields:{food:0,prod:2,gold:0}, desc:'Open-pit extraction of stone and building materials from hills and mesas.'},
+  {id:'pasture',        name:'Pasture',        icon:'🐄', turns:3, req:'animal_husbandry',terrains:[4,5],        yields:{food:1,prod:0,gold:1}, desc:'Fenced grazing land for domesticated animals — cattle, sheep, and horses.'},
+  {id:'plantation',     name:'Plantation',     icon:'🌿', turns:4, req:'agriculture',    terrains:[4,5,11,14],  yields:{food:0,prod:0,gold:2}, desc:'Organized cultivation of cash crops like cotton, tobacco, spices, and coffee.'},
+  {id:'lumber_mill',    name:'Lumber Mill',    icon:'🪓', turns:4, req:'toolcraft',       terrains:[2,6,14],     yields:{food:0,prod:2,gold:0}, desc:'Processes timber from surrounding forests into usable building materials.'},
+  {id:'fishery',        name:'Fishery',        icon:'🐟', turns:3, req:'toolcraft',       terrains:[3,16,18],    yields:{food:2,prod:0,gold:0}, desc:'Nets and traps set in coastal and reef waters to harvest fish and shellfish.'},
+  {id:'road',           name:'Road',           icon:'🛤️', turns:2, req:null,             terrains:'any_land',   yields:{food:0,prod:0,gold:0}, desc:'A cleared path that reduces movement cost. Connect cities for trade routes.'},
+];
+
 // Unit types — id, name, era, domain, str, rng, mv, cost, req (tech), type
 const UNIT_TYPES = [
   // Civilians

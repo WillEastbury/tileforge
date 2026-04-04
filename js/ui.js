@@ -224,6 +224,8 @@ const UI = {
             <div>HP: ${unit.hp}/100</div>
             <div>XP: ${unit.xp}</div>
             ${unit.fortified ? '<div>🛡 Fortified</div>' : ''}
+            ${unit.sleeping ? '<div>💤 Sleeping</div>' : ''}
+            ${unit.buildingImprovement ? `<div>🔨 Building ${IMPROVEMENTS.find(i=>i.id===unit.buildingImprovement)?.name || unit.buildingImprovement} (${unit.buildProgress || 0}/${unit.buildTurnsNeeded})</div>` : ''}
           </div>
           <div class="hp-bar">
             <div class="hp-fill" style="width:${unit.hp}%;background:${unit.hp > 50 ? '#4caf50' : unit.hp > 25 ? '#ff9800' : '#e94560'}"></div>
@@ -247,6 +249,12 @@ const UI = {
       html += `<div class="resource-info">${this.getResourceIcon(tile.resource)} ${tile.resource.name} (${tile.resource.type})</div>`;
       html += `<div class="yields">+${tile.resource.food}🌾 +${tile.resource.prod}⚙️ +${tile.resource.gold}💰</div>`;
     }
+
+    if (tile.improvement) {
+      const imp = IMPROVEMENTS.find(i => i.id === tile.improvement);
+      if (imp) html += `<div style="margin-top:4px">${imp.icon} ${imp.name} (+${imp.yields.food}🌾 +${imp.yields.prod}⚙️ +${imp.yields.gold}💰)</div>`;
+    }
+    if (tile.road) html += `<div>🛤️ Road</div>`;
 
     if (tile.owner >= 0) {
       html += `<div style="margin-top:4px">Territory: ${Game.state.players[tile.owner].name}</div>`;
@@ -340,6 +348,50 @@ const UI = {
         };
         bar.appendChild(btn);
       }
+
+      // Build improvement (civilian units with canBuild)
+      if (uType.canBuild) {
+        const tile = Game.mapData[unit.r][unit.c];
+        const terrain = TERRAINS[tile.terrain];
+        const available = IMPROVEMENTS.filter(imp => {
+          if (imp.id === 'road') {
+            return !terrain.water && terrain.mv < 99 && !tile.road;
+          }
+          if (tile.improvement === imp.id) return false;
+          if (imp.req && (!Game.state.players[unit.owner].techs || !Game.state.players[unit.owner].techs.has(imp.req))) return false;
+          if (imp.terrains === 'any_land') return !terrain.water && terrain.mv < 99;
+          return imp.terrains.includes(tile.terrain);
+        });
+        for (const imp of available) {
+          const btn = document.createElement('button');
+          btn.textContent = `${imp.icon} Build ${imp.name}`;
+          btn.title = `${imp.turns} turns — ${imp.desc}`;
+          btn.onclick = () => {
+            Game.startBuildImprovement(unit, imp.id);
+            unit.movementLeft = 0;
+            Game.selectedUnit = null;
+            Game.movementRange = null;
+            Renderer.render();
+            this.updateRightPanel();
+            this.updateActionButtons();
+          };
+          bar.appendChild(btn);
+        }
+      }
+
+      // Sleep (mark unit as sleeping — won't trigger idle notifications)
+      const sleepBtn = document.createElement('button');
+      sleepBtn.textContent = unit.sleeping ? '☀️ Wake' : '💤 Sleep';
+      sleepBtn.onclick = () => {
+        unit.sleeping = !unit.sleeping;
+        if (unit.sleeping) unit.movementLeft = 0;
+        Game.selectedUnit = null;
+        Game.movementRange = null;
+        Renderer.render();
+        this.updateRightPanel();
+        bar.innerHTML = '';
+      };
+      bar.appendChild(sleepBtn);
 
       // Skip turn
       const skipBtn = document.createElement('button');
@@ -1103,10 +1155,10 @@ const UI = {
       }
     }
 
-    // Idle civilian/settler units (full movement, haven't acted)
+    // Idle civilian/settler units (not sleeping, not building)
     for (const unit of p.units) {
       const uType = Game.getUnitType(unit);
-      if ((uType.type === 'civilian' || uType.type === 'settler') && !unit.hasActed) {
+      if ((uType.type === 'civilian' || uType.type === 'settler') && !unit.hasActed && !unit.sleeping && !unit.buildingImprovement) {
         this.notify(`⚠️ Idle ${uType.name} at (${unit.r},${unit.c}) — put them to work!`, () => {
           Renderer.centerOn(unit.r, unit.c);
           Game.selectedUnit = unit;

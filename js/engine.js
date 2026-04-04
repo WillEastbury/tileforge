@@ -420,6 +420,15 @@ const Game = {
         gold += tile.resource.gold;
         sci += tile.resource.sci || 0;
       }
+      // Improvement yields
+      if (tile.improvement) {
+        const imp = IMPROVEMENTS.find(i => i.id === tile.improvement);
+        if (imp) {
+          food += imp.yields.food;
+          prod += imp.yields.prod;
+          gold += imp.yields.gold;
+        }
+      }
     }
 
     // Building yields
@@ -509,6 +518,10 @@ const Game = {
       xp: 0,
       fortified: false,
       hasActed: false,
+      sleeping: false,
+      buildingImprovement: null,
+      buildProgress: 0,
+      buildTurnsNeeded: 0,
     };
     p.units.push(unit);
     this.mapData[r][c].unit = unit;
@@ -604,8 +617,57 @@ const Game = {
     const cost = this.getMovementCost(unit, tr, tc);
     unit.movementLeft = Math.max(0, unit.movementLeft - cost);
     unit.fortified = false;
+    unit.sleeping = false;
+    // Cancel improvement building if unit moves away
+    if (unit.buildingImprovement) {
+      unit.buildingImprovement = null;
+      unit.buildProgress = 0;
+    }
 
     return true;
+  },
+
+  // ========== TILE IMPROVEMENTS ==========
+
+  startBuildImprovement(unit, improvementId) {
+    const imp = IMPROVEMENTS.find(i => i.id === improvementId);
+    if (!imp) return;
+    unit.buildingImprovement = improvementId;
+    unit.buildProgress = 0;
+    unit.buildTurnsNeeded = imp.turns;
+    unit.movementLeft = 0;
+    unit.hasActed = true;
+    UI.notify(`🔨 ${this.getUnitType(unit).name} started building ${imp.name} (${imp.turns} turns)`);
+  },
+
+  processImprovementBuilding() {
+    for (const p of this.state.players) {
+      for (const unit of p.units) {
+        if (!unit.buildingImprovement) continue;
+        unit.buildProgress = (unit.buildProgress || 0) + 1;
+        if (unit.buildProgress >= unit.buildTurnsNeeded) {
+          const tile = this.mapData[unit.r][unit.c];
+          const impId = unit.buildingImprovement;
+          const imp = IMPROVEMENTS.find(i => i.id === impId);
+          if (impId === 'road') {
+            tile.road = true;
+          } else {
+            tile.improvement = impId;
+          }
+          if (unit.owner === 0) {
+            UI.notify(`✅ ${imp.name} completed at (${unit.r},${unit.c})!`, () => {
+              Renderer.centerOn(unit.r, unit.c);
+            });
+          }
+          unit.buildingImprovement = null;
+          unit.buildProgress = 0;
+          unit.buildTurnsNeeded = 0;
+        } else {
+          unit.movementLeft = 0;
+          unit.hasActed = true;
+        }
+      }
+    }
   },
 
   // ========== COMBAT ==========
@@ -1044,6 +1106,7 @@ const Game = {
     if (this.state.gameOver) return;
 
     // Process human player
+    this.processImprovementBuilding();
     this.processTurn(0);
 
     // Reset human units
