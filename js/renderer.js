@@ -1516,45 +1516,9 @@ const Renderer = {
         tileSprite.tint = (tR << 16) | (tG << 8) | tB;
         this.terrainLayer.addChild(tileSprite);
 
-        // Diagonal corner beach patches for coast tiles
-        if (tile.terrain === 16 && fog >= 1) {
-          const [nT, eT, sT, wT] = this.getCardinalNeighborTerrains(r, c);
-          const mapH = Game.state.mapHeight, mapW = Game.state.mapWidth;
-          const diagCorners = [
-            {dr:-1, dc:-1, cardA: nT, cardB: wT, cx: 0, cy: 0},       // NW
-            {dr:-1, dc: 1, cardA: nT, cardB: eT, cx: tileW, cy: 0},   // NE
-            {dr: 1, dc:-1, cardA: sT, cardB: wT, cx: 0, cy: ts},      // SW
-            {dr: 1, dc: 1, cardA: sT, cardB: eT, cx: tileW, cy: ts}   // SE
-          ];
-          for (const dc of diagCorners) {
-            // Only draw corner patch when diagonal is land but NEITHER cardinal neighbor is land
-            const diagR = ((r + dc.dr) % mapH + mapH) % mapH;
-            const diagC = ((c + dc.dc) % mapW + mapW) % mapW;
-            const diagT = Game.mapData[diagR][diagC].terrain;
-            if (!isWaterTerrain(diagT) && isWaterTerrain(dc.cardA) && isWaterTerrain(dc.cardB)) {
-              const cg = new PIXI.Graphics();
-              const sandColor = 0xD8C890;
-              // Radial sand patch at corner
-              for (let s = 0; s < 6; s++) {
-                const t = s / 6;
-                const rad = 10 * (1 - t);
-                cg.beginFill(sandColor, 0.7 * (1 - t) * (1 - t));
-                cg.drawCircle(px + dc.cx, py + dc.cy, rad);
-                cg.endFill();
-              }
-              // Small foam arc
-              cg.lineStyle(1, 0xFFFFFF, 0.3);
-              cg.drawCircle(px + dc.cx, py + dc.cy, 11);
-              cg.lineStyle(0);
-              this.terrainLayer.addChild(cg);
-            }
-          }
-        }
-
-        // Edge blending overlay for terrain transitions
+        // Edge blending overlay for terrain transitions — subtle tint only
         if (fog === 2) {
           const [nT, eT, sT, wT] = this.getCardinalNeighborTerrains(r, c);
-          const myCat = getTerrainCategory(tile.terrain);
           const myIsWater = isWaterTerrain(tile.terrain);
           const cardinals = [nT, eT, sT, wT]; // N, E, S, W
           const edgeGfx = new PIXI.Graphics();
@@ -1565,50 +1529,24 @@ const Renderer = {
             if (nt < 0 || nt === tile.terrain) continue;
             const nColor = TERRAINS[nt].color;
             const nIsWater = isWaterTerrain(nt);
-            const sameCat = (getTerrainCategory(nt) === myCat);
+            const crossType = (myIsWater !== nIsWater);
 
             hasEdge = true;
 
-            // Wide gradient blend: 18px for same-cat, 22px for cross-cat (on 48px tile)
-            const stripW = sameCat ? 18 : 22;
-            const steps = 10;
+            // Thin feathered edge: 8px cross-type, 5px same-type
+            const stripW = crossType ? 8 : 5;
+            const steps = 4;
             const stepSz = stripW / steps;
+            const blendColor = (!myIsWater && nIsWater) ? 0x3388BB : nColor;
 
             for (let s = 0; s < steps; s++) {
-              // Smooth cubic falloff for natural transition
               const t = s / steps;
-              const alpha = (sameCat ? 0.35 : 0.5) * (1 - t) * (1 - t);
-              const blendColor = (!myIsWater && nIsWater) ? 0x3388BB : nColor;
+              const alpha = (crossType ? 0.25 : 0.15) * (1 - t);
               edgeGfx.beginFill(blendColor, alpha);
               if (dir === 0) edgeGfx.drawRect(px, py + ts - stripW + s * stepSz, tileW, stepSz);
               else if (dir === 1) edgeGfx.drawRect(px + tileW - stripW + s * stepSz, py, stepSz, ts);
               else if (dir === 2) edgeGfx.drawRect(px, py + s * stepSz, tileW, stepSz);
               else edgeGfx.drawRect(px + s * stepSz, py, stepSz, ts);
-              edgeGfx.endFill();
-            }
-          }
-
-          // Diagonal corner blends for smoother transitions
-          const h = Game.state.mapHeight, w = Game.state.mapWidth;
-          const corners = [
-            {dr: -1, dc: -1, cx: 0, cy: 0},           // NW
-            {dr: -1, dc: 1, cx: tileW, cy: 0},         // NE
-            {dr: 1, dc: -1, cx: 0, cy: ts},             // SW
-            {dr: 1, dc: 1, cx: tileW, cy: ts}            // SE
-          ];
-          for (const cn of corners) {
-            const nr = ((r + cn.dr) % h + h) % h;
-            const nc = ((c + cn.dc) % w + w) % w;
-            const ct = Game.mapData[nr][nc].terrain;
-            if (ct === tile.terrain) continue;
-            hasEdge = true;
-            const cColor = TERRAINS[ct].color;
-            for (let s = 0; s < 5; s++) {
-              const t = s / 5;
-              const rad = 12 * (1 - t);
-              const alpha = 0.2 * (1 - t) * (1 - t);
-              edgeGfx.beginFill(cColor, alpha);
-              edgeGfx.drawCircle(px + cn.cx, py + cn.cy, rad);
               edgeGfx.endFill();
             }
           }
