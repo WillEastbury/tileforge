@@ -988,7 +988,7 @@ const Game = {
 
   updateFogOfWar() {
     const {mapHeight} = this.state;
-    // Reset all to explored (keep explored state)
+    // Reset all visible→explored for ALL players
     for (let r = 0; r < mapHeight; r++) {
       for (let c = 0; c < this.rowWidths[r]; c++) {
         const tile = this.mapData[r][c];
@@ -998,34 +998,36 @@ const Game = {
       }
     }
 
-    // Set visible around cities and units
-    for (const p of this.state.players) {
-      const sightRange = 2;
-      const reveal = (r, c, range) => {
-        const visited = new Set();
-        const queue = [{r, c, d: 0}];
-        visited.add(r + ',' + c);
-        while (queue.length > 0) {
-          const {r: cr, c: cc, d} = queue.shift();
-          const tile = this.getTile(cr, cc);
-          if (tile) tile.fogState[p.id] = 2;
-          if (d < range) {
-            for (const n of this.getNeighbors(cr, cc)) {
-              const key = n.r + ',' + n.c;
-              if (!visited.has(key)) {
-                visited.add(key);
-                queue.push({r: n.r, c: n.c, d: d + 1});
-              }
+    // Reveal around each player's cities and units — explicitly pass playerId
+    const revealFor = (playerId, r, c, range) => {
+      const visited = new Set();
+      const queue = [{r, c, d: 0}];
+      visited.add(r + ',' + c);
+      while (queue.length > 0) {
+        const {r: cr, c: cc, d} = queue.shift();
+        const tile = this.getTile(cr, cc);
+        if (tile) tile.fogState[playerId] = 2;
+        if (d < range) {
+          for (const n of this.getNeighbors(cr, cc)) {
+            const key = n.r + ',' + n.c;
+            if (!visited.has(key)) {
+              visited.add(key);
+              queue.push({r: n.r, c: n.c, d: d + 1});
             }
           }
         }
-      };
+      }
+    };
 
-      for (const city of p.cities) reveal(city.r, city.c, sightRange + 1);
+    for (let pi = 0; pi < this.state.players.length; pi++) {
+      const p = this.state.players[pi];
+      if (!p.alive) continue;
+      const sightRange = 2;
+      for (const city of p.cities) revealFor(pi, city.r, city.c, sightRange + 1);
       for (const unit of p.units) {
         const uType = this.getUnitType(unit);
         const sight = uType.type === 'recon' ? 3 : sightRange;
-        reveal(unit.r, unit.c, sight);
+        revealFor(pi, unit.r, unit.c, sight);
       }
     }
   },

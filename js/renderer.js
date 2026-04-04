@@ -1199,23 +1199,23 @@ const Renderer = {
   getCardinalNeighborTerrains(r, c) {
     const h = Game.state.mapHeight;
     const w = Game.rowWidths[r];
-    // East
+    // East (wraps)
     const eT = Game.mapData[r][(c + 1) % w].terrain;
-    // West
+    // West (wraps)
     const wT = Game.mapData[r][(c - 1 + w) % w].terrain;
-    // North (r+1 in this coordinate system — higher row index)
-    let nT = -1;
-    if (r < h - 1) {
-      const nw = Game.rowWidths[r + 1];
-      const nc = Math.round(c * nw / w) % nw;
-      nT = Game.mapData[r + 1][nc].terrain;
-    }
-    // South (r-1)
-    let sT = -1;
+    // North (r-1) — treat map edge as ocean (17)
+    let nT = 17;
     if (r > 0) {
-      const sw = Game.rowWidths[r - 1];
+      const nw = Game.rowWidths[r - 1];
+      const nc = Math.round(c * nw / w) % nw;
+      nT = Game.mapData[r - 1][nc].terrain;
+    }
+    // South (r+1) — treat map edge as ocean (17)
+    let sT = 17;
+    if (r < h - 1) {
+      const sw = Game.rowWidths[r + 1];
       const sc = Math.round(c * sw / w) % sw;
-      sT = Game.mapData[r - 1][sc].terrain;
+      sT = Game.mapData[r + 1][sc].terrain;
     }
     return [nT, eT, sT, wT];
   },
@@ -1357,7 +1357,7 @@ const Renderer = {
     if (!tile) return;
 
     // Check fog
-    if (tile.fogState[0] === 0) return;
+    if (!tile.fogState || tile.fogState[0] !== 2) return;
 
     // If we have a selected unit with movement range, try to move
     if (Game.selectedUnit && Game.movementRange) {
@@ -1484,8 +1484,8 @@ const Renderer = {
         // Check if visible on screen (approximate)
         if (px + ts < viewLeft - ts * 2 || px > viewRight + ts * 2) continue;
 
-        const fog = tile.fogState[0];
-        if (fog === 0) continue; // Unexplored
+        const fog = tile.fogState ? (tile.fogState[0] || 0) : 0;
+        if (fog === 0) continue; // Unexplored — skip
 
         const terrain = TERRAINS[tile.terrain];
 
@@ -2033,7 +2033,7 @@ const Renderer = {
       const offset = (eqW - rw) / 2;
       for (let c = 0; c < rw; c++) {
         const tile = Game.mapData[r][c];
-        if (tile.fogState[0] === 0) continue;
+        if (!tile.fogState || tile.fogState[0] === 0) continue;
 
         const terrain = TERRAINS[tile.terrain];
         let color = '#' + terrain.color.toString(16).padStart(6, '0');
