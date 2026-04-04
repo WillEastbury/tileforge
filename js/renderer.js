@@ -238,16 +238,15 @@ const Renderer = {
           break;
         }
 
-        case 3: { // Frozen Coast
-          // Water base with horizontal wave texture
-          g.beginFill(0x6890B0);
+        case 3: { // Frozen Coast — grey-blue icy water, ocean-compatible
+          g.beginFill(0x5588AA);
           g.drawRect(0, 0, ts, ts);
           g.endFill();
-          fillNoise(g, rng, 0x7098B8, 120, 20);
-          // Wave lines
+          fillNoise(g, rng, 0x5588AA, 120, 18);
+          // Subtle ocean-toned wave lines
           for (let i = 0; i < 6; i++) {
             const wy = rng() * ts;
-            g.lineStyle(1, mix(0x5878A0, 0x88B0D0, rng()), 0.3);
+            g.lineStyle(1, mix(0x3D6E99, 0x6699BB, rng()), 0.3);
             g.moveTo(0, wy);
             for (let x = 0; x <= ts; x += 4) {
               g.lineTo(x, wy + Math.sin(x * 0.3 + i * 2) * 1.5);
@@ -267,14 +266,13 @@ const Renderer = {
             g.beginFill(0xD8E8F4, 0.7 + rng() * 0.2);
             g.drawPolygon(pts);
             g.endFill();
-            // Highlight edge
             g.beginFill(0xF0F8FF, 0.4);
             g.drawEllipse(cx - 1, cy - 1, 2, 1.5);
             g.endFill();
           }
-          // Dark water gaps
+          // Dark water gaps in ocean-compatible blue
           for (let i = 0; i < 6; i++) {
-            g.beginFill(0x405870, 0.4);
+            g.beginFill(0x2A5577, 0.4);
             g.drawEllipse(rng() * ts, rng() * ts, 2 + rng() * 3, 1 + rng());
             g.endFill();
           }
@@ -787,47 +785,39 @@ const Renderer = {
           break;
         }
 
-        case 16: { // Coast
-          // Sand strip (right side)
-          g.beginFill(0xD8C890);
-          g.drawRect(ts * 0.65, 0, ts * 0.35, ts);
+        case 16: { // Coast — shallow water base (autotiling adds beach strips)
+          // Full-tile shallow water base, ocean-compatible
+          g.beginFill(0x3388BB);
+          g.drawRect(0, 0, ts, ts);
           g.endFill();
-          fillNoise(g, rng, 0xD0C080, 60, 15);
-          // Water portion (left side)
-          g.beginFill(0x4488BB);
-          g.drawRect(0, 0, ts * 0.6, ts);
-          g.endFill();
-          // Water noise
-          for (let i = 0; i < 80; i++) {
-            g.beginFill(mix(0x3878AA, 0x5098CC, rng()), 0.4 + rng() * 0.4);
-            g.drawRect(Math.floor(rng() * ts * 0.6), Math.floor(rng() * ts), 1 + Math.floor(rng() * 2), 1);
+          fillNoise(g, rng, 0x3388BB, 140, 18);
+          // Subtle sandy bottom patches visible through shallow water
+          for (let i = 0; i < 12; i++) {
+            const sx = rng() * ts, sy = rng() * ts;
+            g.beginFill(mix(0x8BA870, 0xA0B080, rng()), 0.08 + rng() * 0.07);
+            g.drawEllipse(sx, sy, 4 + rng() * 6, 3 + rng() * 4);
             g.endFill();
           }
-          // Underwater hint (darker deeper water)
-          g.beginFill(0x2A6690, 0.3);
-          g.drawRect(0, 0, ts * 0.3, ts);
-          g.endFill();
-          // Gentle wave arcs
-          for (let i = 0; i < 4; i++) {
-            const wy = 4 + i * (ts / 4);
-            g.lineStyle(1, mix(0x5AA0CC, 0x88C0E0, rng()), 0.4);
+          // Lighter shallow-water patches
+          for (let i = 0; i < 8; i++) {
+            g.beginFill(brighten(0x3388BB, 15 + rng() * 10), 0.15 + rng() * 0.1);
+            g.drawEllipse(rng() * ts, rng() * ts, 5 + rng() * 6, 3 + rng() * 4);
+            g.endFill();
+          }
+          // Gentle wave arcs across the whole tile
+          for (let i = 0; i < 5; i++) {
+            const wy = 3 + i * (ts / 5);
+            g.lineStyle(1, mix(0x4498CC, 0x66AADD, rng()), 0.3);
             g.moveTo(0, wy);
-            for (let x = 0; x <= ts * 0.65; x += 4) {
+            for (let x = 0; x <= ts; x += 4) {
               g.lineTo(x, wy + Math.sin(x * 0.2 + i) * 2);
             }
           }
           g.lineStyle(0);
-          // White foam/surf line
-          for (let y = 0; y < ts; y += 2) {
-            const fx = ts * 0.6 + Math.sin(y * 0.3) * 2;
-            g.beginFill(0xFFFFFF, 0.5 + rng() * 0.3);
-            g.drawRect(fx, y, 2 + rng() * 2, 2);
-            g.endFill();
-          }
-          // Sand noise on beach
-          for (let i = 0; i < 50; i++) {
-            g.beginFill(mix(0xC8B878, 0xE0D098, rng()), 0.4 + rng() * 0.4);
-            g.drawRect(Math.floor(ts * 0.65 + rng() * ts * 0.35), Math.floor(rng() * ts), 1, 1);
+          // White shimmer specks (light on shallow water)
+          for (let i = 0; i < 10; i++) {
+            g.beginFill(0xFFFFFF, 0.12 + rng() * 0.15);
+            g.drawRect(Math.floor(rng() * ts), Math.floor(rng() * ts), 2 + Math.floor(rng() * 2), 1);
             g.endFill();
           }
           break;
@@ -868,40 +858,53 @@ const Renderer = {
           break;
         }
 
-        case 18: { // Reef
-          // Turquoise water base
-          fillNoise(g, rng, 0x40A0A8, 140, 20);
-          // Light ripple pattern
+        case 18: { // Reef — ocean-blue water base with underwater coral
+          // Ocean-compatible water base
+          g.beginFill(0x2D77AA);
+          g.drawRect(0, 0, ts, ts);
+          g.endFill();
+          fillNoise(g, rng, 0x2D77AA, 140, 20);
+          // Lighter blue patches suggesting shallow water over reef
+          for (let i = 0; i < 6; i++) {
+            g.beginFill(mix(0x3388BB, 0x4499CC, rng()), 0.15 + rng() * 0.12);
+            g.drawEllipse(rng() * ts, rng() * ts, 5 + rng() * 6, 3 + rng() * 5);
+            g.endFill();
+          }
+          // Subtle wave ripples matching ocean style
           for (let i = 0; i < 4; i++) {
             const wy = rng() * ts;
-            g.lineStyle(1, brighten(0x40A0A8, 20), 0.2);
+            g.lineStyle(1, mix(0x2266AA, 0x4488CC, rng()), 0.25);
             g.moveTo(0, wy);
             for (let x = 0; x <= ts; x += 3) {
               g.lineTo(x, wy + Math.sin(x * 0.25 + i) * 1.5);
             }
           }
           g.lineStyle(0);
-          // Colorful coral structures
+          // Underwater coral structures — vibrant but lower opacity to feel submerged
           const coralColors = [0xDD6688, 0xDD8844, 0xDDCC44, 0xFF8866, 0xCC66AA];
           for (let i = 0; i < 7; i++) {
             const cx = 4 + rng() * (ts - 8), cy = 4 + rng() * (ts - 8);
             const cc = coralColors[Math.floor(rng() * coralColors.length)];
-            // Branching coral: connected circles
-            g.beginFill(cc, 0.7 + rng() * 0.2);
+            // Core coral blob — reduced opacity for underwater look
+            g.beginFill(cc, 0.45 + rng() * 0.15);
             g.drawCircle(cx, cy, 2 + rng() * 2);
             g.endFill();
             for (let b = 0; b < 3; b++) {
               const bx = cx + (rng() - 0.5) * 6;
               const by = cy + (rng() - 0.5) * 6;
-              g.beginFill(brighten(cc, (rng() - 0.5) * 20), 0.6 + rng() * 0.2);
+              g.beginFill(brighten(cc, (rng() - 0.5) * 20), 0.35 + rng() * 0.15);
               g.drawCircle(bx, by, 1 + rng() * 1.5);
               g.endFill();
             }
           }
-          // Fish-like tiny dots
+          // Blue-tinted water overlay to push coral further underwater
+          g.beginFill(0x2266AA, 0.12);
+          g.drawRect(0, 0, ts, ts);
+          g.endFill();
+          // Fish-like tiny dots — reduced opacity
           for (let i = 0; i < 5; i++) {
             const fc = rng() > 0.5 ? 0xFFCC00 : 0xFF6644;
-            g.beginFill(fc, 0.6);
+            g.beginFill(fc, 0.35);
             g.drawEllipse(rng() * ts, rng() * ts, 1.5, 0.8);
             g.endFill();
           }
@@ -1528,22 +1531,28 @@ const Renderer = {
           for (let dir = 0; dir < 4; dir++) {
             const nt = cardinals[dir];
             if (nt < 0) continue;
-            if (nt === tile.terrain) continue;
+            if (nt === tile.terrain) continue; // blend whenever terrain IDs differ
             const nCat = getTerrainCategory(nt);
-            if (nCat === myCat) continue;
             const nIsWater = isWaterTerrain(nt);
+            const sameCat = (nCat === myCat);
 
             hasEdge = true;
 
+            // Same-category transitions get subtle/thin blending
+            const blendStrip = sameCat ? 6 : stripWidth;
+            const blendSteps = sameCat ? 3 : steps;
+            const blendAlpha = sameCat ? 0.15 : 0.25;
+            const blendStepSize = blendStrip / blendSteps;
+
             if (myIsWater && !nIsWater) {
               const nColor = TERRAINS[nt].color;
-              for (let s = 0; s < steps; s++) {
-                const alpha = 0.2 * (1 - s / steps);
+              for (let s = 0; s < blendSteps; s++) {
+                const alpha = 0.2 * (1 - s / blendSteps);
                 edgeGfx.beginFill(nColor, alpha);
-                if (dir === 0) edgeGfx.drawRect(px, py + ts - stripWidth + s * stepSize, tileW, stepSize);
-                else if (dir === 1) edgeGfx.drawRect(px + tileW - stripWidth + s * stepSize, py, stepSize, ts);
-                else if (dir === 2) edgeGfx.drawRect(px, py + s * stepSize, tileW, stepSize);
-                else edgeGfx.drawRect(px + s * stepSize, py, stepSize, ts);
+                if (dir === 0) edgeGfx.drawRect(px, py + ts - blendStrip + s * blendStepSize, tileW, blendStepSize);
+                else if (dir === 1) edgeGfx.drawRect(px + tileW - blendStrip + s * blendStepSize, py, blendStepSize, ts);
+                else if (dir === 2) edgeGfx.drawRect(px, py + s * blendStepSize, tileW, blendStepSize);
+                else edgeGfx.drawRect(px + s * blendStepSize, py, blendStepSize, ts);
                 edgeGfx.endFill();
               }
             } else if (!myIsWater && nIsWater) {
@@ -1559,13 +1568,13 @@ const Renderer = {
               }
             } else {
               const nColor = TERRAINS[nt].color;
-              for (let s = 0; s < steps; s++) {
-                const alpha = 0.25 * (1 - s / steps);
+              for (let s = 0; s < blendSteps; s++) {
+                const alpha = blendAlpha * (1 - s / blendSteps);
                 edgeGfx.beginFill(nColor, alpha);
-                if (dir === 0) edgeGfx.drawRect(px, py + ts - stripWidth + s * stepSize, tileW, stepSize);
-                else if (dir === 1) edgeGfx.drawRect(px + tileW - stripWidth + s * stepSize, py, stepSize, ts);
-                else if (dir === 2) edgeGfx.drawRect(px, py + s * stepSize, tileW, stepSize);
-                else edgeGfx.drawRect(px + s * stepSize, py, stepSize, ts);
+                if (dir === 0) edgeGfx.drawRect(px, py + ts - blendStrip + s * blendStepSize, tileW, blendStepSize);
+                else if (dir === 1) edgeGfx.drawRect(px + tileW - blendStrip + s * blendStepSize, py, blendStepSize, ts);
+                else if (dir === 2) edgeGfx.drawRect(px, py + s * blendStepSize, tileW, blendStepSize);
+                else edgeGfx.drawRect(px + s * blendStepSize, py, blendStepSize, ts);
                 edgeGfx.endFill();
               }
             }
