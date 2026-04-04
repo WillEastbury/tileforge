@@ -1235,6 +1235,11 @@ const Renderer = {
       const dy = e.clientY - this.lastMouse.y;
       this.camera.x -= dx / this.camera.zoom;
       this.camera.y -= dy / this.camera.zoom;
+      // Wrap horizontally and vertically (flat torus)
+      const totalW = Game.state.mapWidth * this.tileSize;
+      const totalH = Game.state.mapHeight * this.tileSize;
+      this.camera.x = ((this.camera.x % totalW) + totalW) % totalW;
+      this.camera.y = ((this.camera.y % totalH) + totalH) % totalH;
       this.lastMouse = {x: e.clientX, y: e.clientY};
       this.render();
       this.updateMinimap();
@@ -1275,6 +1280,11 @@ const Renderer = {
         const dy = e.touches[0].clientY - this.lastMouse.y;
         this.camera.x -= dx / this.camera.zoom;
         this.camera.y -= dy / this.camera.zoom;
+        // Wrap horizontally and vertically (flat torus)
+        const totalW = Game.state.mapWidth * this.tileSize;
+        const totalH = Game.state.mapHeight * this.tileSize;
+        this.camera.x = ((this.camera.x % totalW) + totalW) % totalW;
+        this.camera.y = ((this.camera.y % totalH) + totalH) % totalH;
         this.lastMouse = {x: e.touches[0].clientX, y: e.touches[0].clientY};
         this.render();
       } else if (e.touches.length === 2) {
@@ -1337,19 +1347,17 @@ const Renderer = {
     const ts = this.tileSize;
     const mapHeight = Game.state.mapHeight;
 
-    // Row from Y
-    const row = Math.floor(worldY / ts);
+    // Row from Y (wrap vertically)
+    const totalMapWidth = eqWidth * ts;
+    const totalMapHeight = mapHeight * ts;
+    let wrappedY = ((worldY % totalMapHeight) + totalMapHeight) % totalMapHeight;
+    const row = Math.floor(wrappedY / ts);
     if (row < 0 || row >= mapHeight) return;
 
     const rw = Game.rowWidths[row];
     const rowPixelWidth = rw * ts;
-    const totalMapWidth = eqWidth * ts;
-    const rowOffset = (totalMapWidth - rowPixelWidth) / 2;
 
-    let colX = worldX - rowOffset;
-    // Handle wrapping
-    if (colX < 0) colX += rowPixelWidth;
-    if (colX >= rowPixelWidth) colX -= rowPixelWidth;
+    let colX = ((worldX % rowPixelWidth) + rowPixelWidth) % rowPixelWidth;
     const col = Math.floor(colX / ts);
     if (col < 0 || col >= rw) return;
 
@@ -1452,6 +1460,7 @@ const Renderer = {
     const eqWidth = Game.state.mapWidth;
     const mapHeight = Game.state.mapHeight;
     const totalMapWidth = eqWidth * ts;
+    const totalMapHeight = mapHeight * ts;
     const screenW = this.app.screen.width;
     const screenH = this.app.screen.height;
     const zoom = this.camera.zoom;
@@ -1462,8 +1471,9 @@ const Renderer = {
     const viewTop = this.camera.y - screenH / (2 * zoom);
     const viewBottom = this.camera.y + screenH / (2 * zoom);
 
-    const minRow = Math.max(0, Math.floor(viewTop / ts) - 1);
-    const maxRow = Math.min(mapHeight - 1, Math.ceil(viewBottom / ts) + 1);
+    // With vertical wrapping, iterate all rows; per-tile visibility checks handle culling
+    const minRow = 0;
+    const maxRow = mapHeight - 1;
 
     this.mapContainer.scale.set(zoom);
     this.mapContainer.position.set(
@@ -1473,16 +1483,19 @@ const Renderer = {
 
     for (let r = minRow; r <= maxRow; r++) {
       const rw = Game.rowWidths[r];
-      const rowPixelWidth = rw * ts;
-      const rowOffset = (totalMapWidth - rowPixelWidth) / 2;
-
       for (let c = 0; c < rw; c++) {
         const tile = Game.mapData[r][c];
-        const px = rowOffset + c * ts;
-        const py = r * ts;
+        const basePx = c * ts;
 
-        // Check if visible on screen (approximate)
-        if (px + ts < viewLeft - ts * 2 || px > viewRight + ts * 2) continue;
+        // Draw tile at normal position and wrapped positions for seamless scroll (both axes)
+        for (const wrapX of [0, -totalMapWidth, totalMapWidth]) {
+          for (const wrapY of [0, -totalMapHeight, totalMapHeight]) {
+          const px = basePx + wrapX;
+          const py = r * ts + wrapY;
+
+          // Check if visible on screen (approximate)
+          if (px + ts < viewLeft - ts * 2 || px > viewRight + ts * 2) continue;
+          if (py + ts < viewTop - ts * 2 || py > viewBottom + ts * 2) continue;
 
         const fog = tile.fogState ? (tile.fogState[0] || 0) : 0;
         if (fog === 0) continue; // Unexplored — skip
@@ -1714,6 +1727,8 @@ const Renderer = {
           }
           } // end else (not animating unit)
         }
+        } // end wrapY loop
+        } // end wrapX loop
       }
     }
 
@@ -1721,34 +1736,34 @@ const Renderer = {
     if (Game.movementRange) {
       for (const [key, mvLeft] of Game.movementRange) {
         const [r, c] = key.split(',').map(Number);
-        const rw = Game.rowWidths[r];
-        const rowPixelWidth = rw * ts;
-        const rowOffset = (totalMapWidth - rowPixelWidth) / 2;
-        const px = rowOffset + c * ts;
-        const py = r * ts;
+        const basePx = c * ts;
 
-        const hl = new PIXI.Graphics();
-        if (mvLeft >= 0) {
-          hl.beginFill(0x53a8b6, 0.3);
-          hl.lineStyle(1, 0x53a8b6, 0.7);
-        } else {
-          // Attack highlight
-          hl.beginFill(0xe94560, 0.3);
-          hl.lineStyle(1, 0xe94560, 0.7);
+        for (const wrapX of [0, -totalMapWidth, totalMapWidth]) {
+          for (const wrapY of [0, -totalMapHeight, totalMapHeight]) {
+          const px = basePx + wrapX;
+          const py = r * ts + wrapY;
+          if (px + ts < viewLeft - ts * 2 || px > viewRight + ts * 2) continue;
+          if (py + ts < viewTop - ts * 2 || py > viewBottom + ts * 2) continue;
+          const hl = new PIXI.Graphics();
+          if (mvLeft >= 0) {
+            hl.beginFill(0x53a8b6, 0.3);
+            hl.lineStyle(1, 0x53a8b6, 0.7);
+          } else {
+            hl.beginFill(0xe94560, 0.3);
+            hl.lineStyle(1, 0xe94560, 0.7);
+          }
+          hl.drawRect(px, py, ts - 1, ts - 1);
+          hl.endFill();
+          this.highlightLayer.addChild(hl);
+          }
         }
-        hl.drawRect(px, py, ts - 1, ts - 1);
-        hl.endFill();
-        this.highlightLayer.addChild(hl);
       }
     }
 
     // Selected unit highlight
     if (Game.selectedUnit) {
       const u = Game.selectedUnit;
-      const rw = Game.rowWidths[u.r];
-      const rowPixelWidth = rw * ts;
-      const rowOffset = (totalMapWidth - rowPixelWidth) / 2;
-      const px = rowOffset + u.c * ts;
+      const px = u.c * ts;
       const py = u.r * ts;
 
       const sel = new PIXI.Graphics();
@@ -1762,13 +1777,8 @@ const Renderer = {
 
   getTilePixelCenter(r, c) {
     const ts = this.tileSize;
-    const eqWidth = Game.state.mapWidth;
-    const rw = Game.rowWidths[r];
-    const totalMapWidth = eqWidth * ts;
-    const rowPixelWidth = rw * ts;
-    const rowOffset = (totalMapWidth - rowPixelWidth) / 2;
     return {
-      x: rowOffset + c * ts + ts / 2,
+      x: c * ts + ts / 2,
       y: r * ts + ts / 2
     };
   },
@@ -1983,13 +1993,8 @@ const Renderer = {
   // Center camera on a position
   centerOn(r, c) {
     const ts = this.tileSize;
-    const eqWidth = Game.state.mapWidth;
-    const rw = Game.rowWidths[r];
-    const totalMapWidth = eqWidth * ts;
-    const rowPixelWidth = rw * ts;
-    const rowOffset = (totalMapWidth - rowPixelWidth) / 2;
 
-    this.camera.x = rowOffset + c * ts + ts / 2;
+    this.camera.x = c * ts + ts / 2;
     this.camera.y = r * ts + ts / 2;
     this.render();
     this.updateMinimap();
@@ -2007,6 +2012,11 @@ const Renderer = {
     const tileRow = my / scaleY;
     this.camera.x = tileCol * this.tileSize;
     this.camera.y = tileRow * this.tileSize;
+    // Wrap both axes (flat torus)
+    const totalW = Game.state.mapWidth * this.tileSize;
+    const totalH = Game.state.mapHeight * this.tileSize;
+    this.camera.x = ((this.camera.x % totalW) + totalW) % totalW;
+    this.camera.y = ((this.camera.y % totalH) + totalH) % totalH;
     this.render();
     this.updateMinimap();
   },
@@ -2030,7 +2040,6 @@ const Renderer = {
 
     for (let r = 0; r < mapH; r++) {
       const rw = Game.rowWidths[r];
-      const offset = (eqW - rw) / 2;
       for (let c = 0; c < rw; c++) {
         const tile = Game.mapData[r][c];
         if (!tile.fogState || tile.fogState[0] === 0) continue;
@@ -2047,7 +2056,7 @@ const Renderer = {
 
         ctx.fillStyle = color;
         ctx.fillRect(
-          Math.floor((offset + c) * scaleX),
+          Math.floor(c * scaleX),
           Math.floor(r * scaleY),
           Math.max(1, Math.ceil(scaleX)),
           Math.max(1, Math.ceil(scaleY))
@@ -2067,6 +2076,13 @@ const Renderer = {
 
     ctx.strokeStyle = '#f0c040';
     ctx.lineWidth = 1;
-    ctx.strokeRect(viewL * scaleX, viewT * scaleY, viewW * scaleX, viewH * scaleY);
+    // Draw viewport rect with wrapping on both axes
+    const rw = viewW * scaleX;
+    const rh = viewH * scaleY;
+    for (const dx of [0, -w, w]) {
+      for (const dy of [0, -h, h]) {
+        ctx.strokeRect(viewL * scaleX + dx, viewT * scaleY + dy, rw, rh);
+      }
+    }
   }
 };

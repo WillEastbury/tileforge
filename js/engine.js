@@ -921,19 +921,45 @@ const Game = {
         this.createUnit(city.owner, q.id, city.r, city.c);
         placed = true;
       } else {
+        // Try immediate neighbors, then 2-ring neighbors
         const neighbors = this.getNeighbors(city.r, city.c);
-        for (const n of neighbors) {
+        // Sort by actual visual distance to city to avoid pole-wrap surprises
+        const withDist = neighbors.map(n => ({...n, d: this.tileDist(city.r, city.c, n.r, n.c)}));
+        withDist.sort((a, b) => a.d - b.d);
+        for (const n of withDist) {
           const t = this.getTile(n.r, n.c);
-          if (!t.unit && this.canPlaceUnit(uType, n.r, n.c)) {
+          if (t && !t.unit && this.canPlaceUnit(uType, n.r, n.c)) {
             this.createUnit(city.owner, q.id, n.r, n.c);
             placed = true;
             break;
           }
         }
+        // Try 2-ring if still not placed
+        if (!placed) {
+          const ring2 = new Set();
+          for (const n of neighbors) {
+            for (const n2 of this.getNeighbors(n.r, n.c)) {
+              const key = n2.r + ',' + n2.c;
+              if (key !== city.r + ',' + city.c && !ring2.has(key)) {
+                ring2.add(key);
+                const t2 = this.getTile(n2.r, n2.c);
+                if (t2 && !t2.unit && this.canPlaceUnit(uType, n2.r, n2.c)) {
+                  this.createUnit(city.owner, q.id, n2.r, n2.c);
+                  placed = true;
+                  break;
+                }
+              }
+            }
+            if (placed) break;
+          }
+        }
       }
       if (!placed) {
-        // Queue overflow — just spawn on city tile
-        this.createUnit(city.owner, q.id, city.r, city.c);
+        // Delay production — don't lose the unit, re-queue it
+        city.buildQueue = q;
+        city.buildQueue.progress = q.cost; // Keep it ready
+        if (city.owner === 0) UI.notify(city.name + ': no room for ' + q.name + '! Waiting...');
+        return; // Don't clear buildQueue
       }
       if (city.owner === 0) UI.notify(city.name + ' trained ' + q.name);
 
