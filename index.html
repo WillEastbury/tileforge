@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TileForge - 4X Strategy</title>
+<script src="https://pixijs.download/v7.3.3/pixi.min.js"></script>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+  <!-- Main Menu -->
+  <div id="main-menu" class="screen active">
+    <div class="menu-container">
+      <h1 class="game-title">TILEFORGE</h1>
+      <p class="game-subtitle">A 4X Strategy Game</p>
+      <div class="menu-buttons">
+        <button class="btn btn-primary" onclick="UI.showNewGame()">New Game</button>
+        <button class="btn btn-secondary" onclick="UI.showLoadGame()">Load Game</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- New Game Setup -->
+  <div id="new-game-screen" class="screen">
+    <div class="panel setup-panel">
+      <h2>New Game</h2>
+      <div class="form-group">
+        <label>Civilization Name</label>
+        <input type="text" id="civ-name" value="Player" maxlength="20">
+      </div>
+      <div class="form-group">
+        <label>Map Size</label>
+        <select id="map-size">
+          <option value="small">Small (48x32)</option>
+          <option value="medium" selected>Medium (72x48)</option>
+          <option value="large">Large (96x64)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>AI Opponents</label>
+        <select id="ai-count">
+          <option value="1">1</option>
+          <option value="2" selected>2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Difficulty</label>
+        <select id="difficulty">
+          <option value="0">Amoeba</option>
+          <option value="1">Invertebrate</option>
+          <option value="2">Wolf</option>
+          <option value="3">Neanderthal</option>
+          <option value="4" selected>Homo Sapiens</option>
+          <option value="5">Apex Predator</option>
+          <option value="6">Superintelligence</option>
+          <option value="7">Singularity AI</option>
+        </select>
+      </div>
+      <div class="form-buttons">
+        <button class="btn btn-primary" onclick="startNewGame()">Start Game</button>
+        <button class="btn btn-secondary" onclick="UI.showMainMenu()">Back</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Save/Load Screen -->
+  <div id="save-load-screen" class="screen">
+    <div class="panel save-panel">
+      <h2 id="save-load-title">Load Game</h2>
+      <div id="save-slots"></div>
+      <div class="form-buttons">
+        <button class="btn btn-secondary" onclick="UI.showMainMenu()">Back</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game Screen -->
+  <div id="game-screen" class="screen">
+    <!-- Top Bar -->
+    <div id="top-bar">
+      <div class="resource-bar">
+        <span class="res" id="res-food" title="Food">🌾 <b>0</b></span>
+        <span class="res" id="res-prod" title="Production">⚙️ <b>0</b></span>
+        <span class="res" id="res-money" title="Money">💰 <b>0</b></span>
+        <span class="res" id="res-science" title="Science">🔬 <b>0</b></span>
+        <span class="res" id="res-culture" title="Culture">🎭 <b>0</b></span>
+        <span class="res" id="res-history" title="History">📜 <b>0</b></span>
+      </div>
+      <div class="turn-info">
+        <span id="turn-display">Turn 1</span>
+        <span id="era-display">Caveman Era</span>
+      </div>
+      <div class="top-buttons">
+        <button class="btn-sm" onclick="UI.showTechTree()" title="Tech Tree">🔬</button>
+        <button class="btn-sm" onclick="UI.showSaveGame()" title="Save Game">💾</button>
+        <button class="btn-sm" onclick="UI.toggleMenu()" title="Menu">☰</button>
+      </div>
+    </div>
+
+    <!-- Map Canvas Container -->
+    <div id="map-container"></div>
+
+    <!-- Minimap -->
+    <div id="minimap-container">
+      <canvas id="minimap" width="200" height="130"></canvas>
+    </div>
+
+    <!-- Right Panel -->
+    <div id="right-panel" class="panel side-panel">
+      <div id="panel-content">
+        <p class="hint">Click a tile, city, or unit for details</p>
+      </div>
+    </div>
+
+    <!-- City Detail Panel (overlay) -->
+    <div id="city-panel" class="overlay-panel hidden">
+      <div class="panel-header">
+        <h3 id="city-name">City</h3>
+        <button class="btn-close" onclick="UI.closeCityPanel()">&times;</button>
+      </div>
+      <div id="city-detail"></div>
+    </div>
+
+    <!-- Tech Tree Panel (overlay) -->
+    <div id="tech-panel" class="overlay-panel hidden">
+      <div class="panel-header">
+        <h3>Technology</h3>
+        <button class="btn-close" onclick="UI.closeTechTree()">&times;</button>
+      </div>
+      <div id="tech-tree-content"></div>
+    </div>
+
+    <!-- Bottom Bar -->
+    <div id="bottom-bar">
+      <div id="action-buttons"></div>
+      <div id="unit-info-bar"></div>
+      <button id="end-turn-btn" class="btn btn-end-turn" onclick="Game.endTurn()">
+        End Turn
+      </button>
+    </div>
+
+    <!-- In-game menu overlay -->
+    <div id="game-menu" class="overlay-panel hidden">
+      <div class="panel-header">
+        <h3>Menu</h3>
+        <button class="btn-close" onclick="UI.toggleMenu()">&times;</button>
+      </div>
+      <div class="menu-buttons vertical">
+        <button class="btn btn-secondary" onclick="UI.showSaveGame()">Save Game</button>
+        <button class="btn btn-secondary" onclick="UI.showLoadGameInGame()">Load Game</button>
+        <button class="btn btn-danger" onclick="UI.quitToMenu()">Quit to Menu</button>
+      </div>
+    </div>
+
+    <!-- Notifications -->
+    <div id="notifications"></div>
+  </div>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/renderer.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/save.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
