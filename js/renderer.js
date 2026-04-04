@@ -4,7 +4,7 @@
 const Renderer = {
   app: null,
   mapContainer: null,
-  tileSize: 32,
+  tileSize: 48,
   camera: {x: 0, y: 0, zoom: 1},
   isDragging: false,
   dragStart: {x: 0, y: 0},
@@ -82,8 +82,22 @@ const Renderer = {
       Math.round(gg(c1) + (gg(c2) - gg(c1)) * t),
       Math.round(bb(c1) + (bb(c2) - bb(c1)) * t)
     );
-    // Seeded pseudo-random for deterministic textures
+    const clamp = (v) => Math.max(0, Math.min(255, Math.round(v)));
+    const brighten = (c, amt) => rgb(clamp(rr(c) + amt), clamp(gg(c) + amt), clamp(bb(c) + amt));
+    const darken = (c, amt) => brighten(c, -amt);
     const seed = (s) => { let v = s; return () => { v = (v * 1664525 + 1013904223) & 0xFFFFFFFF; return (v >>> 0) / 4294967296; }; };
+
+    // Pixel noise: scatter many tiny rects with color variation
+    const fillNoise = (g, rng, base, count, variance) => {
+      for (let i = 0; i < count; i++) {
+        const shift = (rng() - 0.5) * variance;
+        const c = brighten(base, shift);
+        g.beginFill(c, 0.6 + rng() * 0.4);
+        const sz = 1 + Math.floor(rng() * 2);
+        g.drawRect(Math.floor(rng() * ts), Math.floor(rng() * ts), sz, sz);
+        g.endFill();
+      }
+    };
 
     for (let id = 0; id < 20; id++) {
       const terrain = TERRAINS[id];
@@ -97,275 +111,826 @@ const Renderer = {
       g.endFill();
 
       switch (id) {
-        case 0: { // Ice Sheet — crack lines + speckles
-          const lighter = mix(base, 0xFFFFFF, 0.3);
+        case 0: { // Ice Sheet
+          fillNoise(g, rng, 0xDDE8FF, 180, 20);
+          // Pale ice pools
+          for (let i = 0; i < 4; i++) {
+            g.beginFill(mix(0xB0D0F0, 0xD0E8FF, rng()), 0.25 + rng() * 0.15);
+            g.drawEllipse(rng() * ts, rng() * ts, 4 + rng() * 6, 3 + rng() * 4);
+            g.endFill();
+          }
+          // Jagged crack lines in 3 directions
           for (let i = 0; i < 3; i++) {
-            g.lineStyle(1, mix(0x6688CC, base, 0.4), 0.6);
-            const sx = rng() * ts, sy = rng() * ts;
-            g.moveTo(sx, sy);
-            g.lineTo(sx + (rng() - 0.5) * 20, sy + (rng() - 0.5) * 20);
-            g.lineTo(sx + (rng() - 0.5) * 24, sy + (rng() - 0.5) * 24);
+            g.lineStyle(1, mix(0x5577BB, 0x88AADD, rng()), 0.5 + rng() * 0.3);
+            let cx = rng() * ts, cy = rng() * ts;
+            g.moveTo(cx, cy);
+            const segs = 4 + Math.floor(rng() * 4);
+            for (let s = 0; s < segs; s++) {
+              cx += (rng() - 0.5) * 14;
+              cy += (rng() - 0.5) * 14;
+              g.lineTo(cx, cy);
+            }
           }
           g.lineStyle(0);
-          for (let i = 0; i < 12; i++) {
-            g.beginFill(lighter, 0.5);
-            g.drawCircle(rng() * ts, rng() * ts, 1);
+          // Sparkle highlights
+          for (let i = 0; i < 25; i++) {
+            g.beginFill(0xFFFFFF, 0.5 + rng() * 0.5);
+            g.drawRect(Math.floor(rng() * ts), Math.floor(rng() * ts), 1, 1);
             g.endFill();
           }
           break;
         }
-        case 1: { // Tundra — lichen dot clusters
-          for (let i = 0; i < 6; i++) {
+
+        case 1: { // Tundra
+          fillNoise(g, rng, base, 150, 25);
+          // Grey-brown mottling
+          for (let i = 0; i < 40; i++) {
+            const c = rng() > 0.5 ? mix(0x9A9888, 0xB0A890, rng()) : mix(0x808878, 0xA0A898, rng());
+            g.beginFill(c, 0.3 + rng() * 0.3);
+            g.drawRect(Math.floor(rng() * ts), Math.floor(rng() * ts), 1 + Math.floor(rng() * 2), 1 + Math.floor(rng() * 2));
+            g.endFill();
+          }
+          // Lichen patches
+          for (let i = 0; i < 8; i++) {
             const cx = rng() * ts, cy = rng() * ts;
-            const clr = rng() > 0.5 ? 0x6B5B3A : 0x7A9A60;
-            for (let j = 0; j < 3; j++) {
-              g.beginFill(clr, 0.7);
-              g.drawCircle(cx + (rng() - 0.5) * 5, cy + (rng() - 0.5) * 5, 1);
+            const clr = rng() > 0.5 ? 0x8B7B4A : 0x9AAA60;
+            for (let j = 0; j < 4; j++) {
+              g.beginFill(clr, 0.6 + rng() * 0.3);
+              g.drawCircle(cx + (rng() - 0.5) * 6, cy + (rng() - 0.5) * 6, 1);
+              g.endFill();
+            }
+          }
+          // Tiny stones
+          for (let i = 0; i < 3; i++) {
+            g.beginFill(mix(0x808080, 0x999999, rng()), 0.7);
+            g.drawEllipse(rng() * ts, rng() * ts, 1.5 + rng(), 1 + rng() * 0.5);
+            g.endFill();
+          }
+          // Frost dusting
+          for (let i = 0; i < 15; i++) {
+            g.beginFill(0xFFFFFF, 0.2 + rng() * 0.2);
+            g.drawRect(Math.floor(rng() * ts), Math.floor(rng() * ts), 1, 1);
+            g.endFill();
+          }
+          break;
+        }
+
+        case 2: { // Taiga
+          fillNoise(g, rng, base, 150, 30);
+          // Ground shadow base
+          for (let i = 0; i < 30; i++) {
+            g.beginFill(darken(base, 20 + rng() * 20), 0.3);
+            g.drawRect(Math.floor(rng() * ts), Math.floor(rng() * ts), 2, 2);
+            g.endFill();
+          }
+          // 5-7 conifer trees
+          const treeCount = 5 + Math.floor(rng() * 3);
+          for (let i = 0; i < treeCount; i++) {
+            const tx = 6 + rng() * (ts - 12);
+            const ty = 10 + rng() * (ts - 18);
+            // Shadow under tree
+            g.beginFill(0x0A200A, 0.3);
+            g.drawEllipse(tx, ty + 10, 5, 2);
+            g.endFill();
+            // Trunk
+            g.beginFill(0x4A3020, 0.9);
+            g.drawRect(tx - 1, ty + 5, 2, 6);
+            g.endFill();
+            // 3 layered triangle tiers
+            const greens = [darken(base, 15), base, brighten(base, 10)];
+            for (let t = 0; t < 3; t++) {
+              const w = 3 + t * 2.5;
+              const yOff = ty - 2 + t * 4;
+              g.beginFill(greens[t], 0.9);
+              g.moveTo(tx, yOff - 4);
+              g.lineTo(tx - w, yOff + 2);
+              g.lineTo(tx + w, yOff + 2);
+              g.closePath();
+              g.endFill();
+              // Snow on branches
+              g.beginFill(0xE8F0FF, 0.5 + rng() * 0.3);
+              g.drawRect(tx - w * 0.6, yOff - 1, w * 0.5, 1);
+              g.drawRect(tx + w * 0.2, yOff - 2, w * 0.4, 1);
               g.endFill();
             }
           }
           break;
         }
-        case 2: { // Taiga — triangle trees
-          const dark = mix(base, 0x001000, 0.3);
-          for (let i = 0; i < 4; i++) {
-            const tx = 4 + rng() * (ts - 8), ty = 6 + rng() * (ts - 10);
-            g.beginFill(dark, 0.8);
-            g.moveTo(tx, ty - 5);
-            g.lineTo(tx - 3, ty + 3);
-            g.lineTo(tx + 3, ty + 3);
-            g.closePath();
-            g.endFill();
-            g.beginFill(0x3A2010, 0.8);
-            g.drawRect(tx - 0.5, ty + 3, 1, 2);
-            g.endFill();
-          }
-          break;
-        }
-        case 3: { // Frozen Coast — ice chunks + water
-          for (let i = 0; i < 3; i++) {
-            g.beginFill(0xD0E8F8, 0.6);
-            const cx = rng() * ts, cy = rng() * ts;
-            g.drawPolygon([cx, cy - 3, cx - 4, cy + 2, cx + 4, cy + 2]);
-            g.endFill();
-          }
-          for (let i = 0; i < 4; i++) {
-            g.beginFill(0x5080B0, 0.3);
-            g.drawEllipse(rng() * ts, rng() * ts, 3 + rng() * 3, 1.5);
-            g.endFill();
-          }
-          break;
-        }
-        case 4: { // Grassland — grass line marks
-          const darker = mix(base, 0x003300, 0.25);
-          g.lineStyle(1, darker, 0.5);
-          for (let i = 0; i < 14; i++) {
-            const gx = rng() * ts, gy = rng() * ts;
-            g.moveTo(gx, gy);
-            g.lineTo(gx + (rng() - 0.5) * 2, gy - 3 - rng() * 2);
-          }
-          g.lineStyle(0);
-          break;
-        }
-        case 5: { // Plains — wheat stalks
-          const stalkClr = mix(base, 0x806020, 0.3);
-          g.lineStyle(1, stalkClr, 0.6);
-          for (let i = 0; i < 8; i++) {
-            const sx = rng() * ts, sy = 8 + rng() * (ts - 12);
-            g.moveTo(sx, sy + 4);
-            g.lineTo(sx, sy - 3);
-            g.lineStyle(0);
-            g.beginFill(mix(stalkClr, 0xCCBB44, 0.5), 0.7);
-            g.drawEllipse(sx, sy - 4, 1.5, 2);
-            g.endFill();
-            g.lineStyle(1, stalkClr, 0.6);
-          }
-          g.lineStyle(0);
-          break;
-        }
-        case 6: { // Forest — tree canopy circles
-          for (let i = 0; i < 3; i++) {
-            const cx = 6 + rng() * (ts - 12), cy = 6 + rng() * (ts - 12);
-            const rad = 4 + rng() * 2;
-            g.beginFill(mix(base, 0x002200, 0.3), 0.8);
-            g.drawCircle(cx, cy, rad);
-            g.endFill();
-            g.beginFill(mix(base, 0x88FF88, 0.25), 0.5);
-            g.drawCircle(cx - 1, cy - 1, rad * 0.5);
-            g.endFill();
-          }
-          break;
-        }
-        case 7: { // Hills — contour lines
-          g.lineStyle(1, mix(base, 0x000000, 0.2), 0.4);
-          for (let i = 0; i < 3; i++) {
-            const cy = 6 + i * 9;
-            g.moveTo(2, cy + 4);
-            g.quadraticCurveTo(ts * 0.3, cy - 2, ts * 0.5, cy + 2);
-            g.quadraticCurveTo(ts * 0.7, cy + 6, ts - 2, cy);
-          }
-          g.lineStyle(0);
-          break;
-        }
-        case 8: { // Mountains — white-tipped peaks
-          for (let i = 0; i < 2; i++) {
-            const mx = 6 + rng() * (ts - 12), my = ts - 4;
-            const peak = 4 + rng() * 4;
-            g.beginFill(mix(base, 0x444455, 0.2), 0.9);
-            g.moveTo(mx, my - peak * 2.5);
-            g.lineTo(mx - 7, my);
-            g.lineTo(mx + 7, my);
-            g.closePath();
-            g.endFill();
-            // Snow cap
-            g.beginFill(0xF0F0FF, 0.85);
-            g.moveTo(mx, my - peak * 2.5);
-            g.lineTo(mx - 2.5, my - peak * 1.5);
-            g.lineTo(mx + 2.5, my - peak * 1.5);
-            g.closePath();
-            g.endFill();
-          }
-          break;
-        }
-        case 9: { // Wetland — wavy water lines + reeds
-          g.lineStyle(1, 0x3A6A8A, 0.4);
-          for (let i = 0; i < 3; i++) {
-            const wy = 6 + i * 9;
-            g.moveTo(0, wy);
-            for (let x = 0; x <= ts; x += 4) {
-              g.lineTo(x, wy + Math.sin(x * 0.4 + i) * 2);
-            }
-          }
-          g.lineStyle(1, 0x5A7040, 0.7);
-          for (let i = 0; i < 4; i++) {
-            const rx = rng() * ts, ry = rng() * ts;
-            g.moveTo(rx, ry);
-            g.lineTo(rx, ry - 5);
-          }
-          g.lineStyle(0);
-          break;
-        }
-        case 10: { // Desert — dune curves
-          g.lineStyle(1, mix(base, 0xFFEEAA, 0.3), 0.4);
-          for (let i = 0; i < 3; i++) {
-            const dy = 5 + i * 10;
-            g.moveTo(0, dy);
-            g.quadraticCurveTo(ts * 0.25, dy - 4, ts * 0.5, dy);
-            g.quadraticCurveTo(ts * 0.75, dy + 4, ts, dy);
-          }
-          g.lineStyle(0);
-          break;
-        }
-        case 11: { // Savanna — acacia tree silhouette
-          const trunk = 0x6A5030;
-          const canopy = mix(base, 0x556020, 0.3);
-          const tx = ts * 0.5, ty = ts * 0.65;
-          g.beginFill(trunk, 0.8);
-          g.drawRect(tx - 1, ty, 2, ts * 0.3);
-          g.endFill();
-          g.beginFill(canopy, 0.7);
-          g.drawEllipse(tx, ty - 1, 8, 3);
-          g.endFill();
-          break;
-        }
-        case 12: { // Mesa — horizontal stripe bands
-          for (let i = 0; i < 5; i++) {
-            const sy = i * 7;
-            const stripe = i % 2 === 0 ? mix(base, 0xAA6622, 0.2) : mix(base, 0xFFBB77, 0.15);
-            g.beginFill(stripe, 0.5);
-            g.drawRect(0, sy, ts, 6);
-            g.endFill();
-          }
-          break;
-        }
-        case 13: { // Oasis — sandy border, green circle, blue water
-          g.beginFill(mix(base, 0xD4C088, 0.5), 0.4);
+
+        case 3: { // Frozen Coast
+          // Water base with horizontal wave texture
+          g.beginFill(0x6890B0);
           g.drawRect(0, 0, ts, ts);
           g.endFill();
-          g.beginFill(0x50A050, 0.7);
-          g.drawCircle(ts / 2, ts / 2, 9);
+          fillNoise(g, rng, 0x7098B8, 120, 20);
+          // Wave lines
+          for (let i = 0; i < 6; i++) {
+            const wy = rng() * ts;
+            g.lineStyle(1, mix(0x5878A0, 0x88B0D0, rng()), 0.3);
+            g.moveTo(0, wy);
+            for (let x = 0; x <= ts; x += 4) {
+              g.lineTo(x, wy + Math.sin(x * 0.3 + i * 2) * 1.5);
+            }
+          }
+          g.lineStyle(0);
+          // Ice floes (irregular polygons)
+          for (let i = 0; i < 4; i++) {
+            const cx = rng() * ts, cy = rng() * ts;
+            const pts = [];
+            const verts = 5 + Math.floor(rng() * 3);
+            for (let v = 0; v < verts; v++) {
+              const ang = (v / verts) * Math.PI * 2;
+              const r = 3 + rng() * 5;
+              pts.push(cx + Math.cos(ang) * r, cy + Math.sin(ang) * r);
+            }
+            g.beginFill(0xD8E8F4, 0.7 + rng() * 0.2);
+            g.drawPolygon(pts);
+            g.endFill();
+            // Highlight edge
+            g.beginFill(0xF0F8FF, 0.4);
+            g.drawEllipse(cx - 1, cy - 1, 2, 1.5);
+            g.endFill();
+          }
+          // Dark water gaps
+          for (let i = 0; i < 6; i++) {
+            g.beginFill(0x405870, 0.4);
+            g.drawEllipse(rng() * ts, rng() * ts, 2 + rng() * 3, 1 + rng());
+            g.endFill();
+          }
+          break;
+        }
+
+        case 4: { // Grassland
+          // Multi-shade green noise
+          const greens = [0x68A040, 0x7AB648, 0x88C450, 0x60A038];
+          for (let i = 0; i < 200; i++) {
+            const c = greens[Math.floor(rng() * greens.length)];
+            g.beginFill(brighten(c, (rng() - 0.5) * 20), 0.5 + rng() * 0.5);
+            g.drawRect(Math.floor(rng() * ts), Math.floor(rng() * ts), 1 + Math.floor(rng() * 2), 1);
+            g.endFill();
+          }
+          // Dense grass tufts
+          for (let i = 0; i < 40; i++) {
+            const gx = rng() * ts, gy = rng() * ts;
+            const gc = greens[Math.floor(rng() * greens.length)];
+            g.lineStyle(1, darken(gc, 15 + rng() * 15), 0.6 + rng() * 0.3);
+            g.moveTo(gx, gy);
+            g.quadraticCurveTo(gx + (rng() - 0.5) * 3, gy - 3 - rng() * 3, gx + (rng() - 0.3) * 2, gy - 4 - rng() * 3);
+          }
+          g.lineStyle(0);
+          // Wildflower dots
+          for (let i = 0; i < 8; i++) {
+            g.beginFill(rng() > 0.5 ? 0xFFFF88 : 0xFFFFFF, 0.7 + rng() * 0.3);
+            g.drawCircle(rng() * ts, rng() * ts, 0.5 + rng() * 0.5);
+            g.endFill();
+          }
+          // Occasional small rock
+          if (rng() > 0.5) {
+            g.beginFill(0x888888, 0.6);
+            g.drawEllipse(rng() * ts, rng() * ts, 1.5, 1);
+            g.endFill();
+          }
+          break;
+        }
+
+        case 5: { // Plains
+          fillNoise(g, rng, base, 160, 20);
+          // Brown dirt patches
+          for (let i = 0; i < 8; i++) {
+            g.beginFill(mix(0x907848, 0xA89060, rng()), 0.25 + rng() * 0.2);
+            g.drawEllipse(rng() * ts, rng() * ts, 3 + rng() * 5, 2 + rng() * 3);
+            g.endFill();
+          }
+          // Wheat/grain stalks leaning right (wind direction)
+          for (let i = 0; i < 18; i++) {
+            const sx = rng() * ts, sy = 6 + rng() * (ts - 10);
+            const stalkClr = mix(0x908840, 0xC0B060, rng());
+            g.lineStyle(1, stalkClr, 0.6 + rng() * 0.3);
+            g.moveTo(sx, sy + 5);
+            g.quadraticCurveTo(sx + 1.5, sy, sx + 3, sy - 4);
+            g.lineStyle(0);
+            // Seed head
+            g.beginFill(mix(0xCCBB44, 0xDDCC55, rng()), 0.8);
+            g.drawEllipse(sx + 3, sy - 5, 1.5, 2.5);
+            g.endFill();
+          }
+          break;
+        }
+
+        case 6: { // Forest
+          fillNoise(g, rng, base, 150, 30);
+          // Dark floor
+          for (let i = 0; i < 20; i++) {
+            g.beginFill(darken(base, 30 + rng() * 20), 0.4);
+            g.drawRect(Math.floor(rng() * ts), Math.floor(rng() * ts), 2 + Math.floor(rng() * 3), 2);
+            g.endFill();
+          }
+          // 4-5 deciduous trees
+          const fTreeCount = 4 + Math.floor(rng() * 2);
+          for (let i = 0; i < fTreeCount; i++) {
+            const cx = 6 + rng() * (ts - 12), cy = 6 + rng() * (ts - 14);
+            const rad = 5 + rng() * 3;
+            // Shadow
+            g.beginFill(0x0A200A, 0.35);
+            g.drawEllipse(cx + 2, cy + rad + 3, rad * 0.8, 2);
+            g.endFill();
+            // Trunk peeking
+            g.beginFill(mix(0x5A3820, 0x6A4830, rng()), 0.85);
+            g.drawRect(cx - 1, cy + rad * 0.4, 2, rad * 0.8);
+            g.endFill();
+            // Main canopy
+            const canopyClr = mix(base, brighten(base, 15), rng());
+            g.beginFill(darken(canopyClr, 15), 0.85);
+            g.drawCircle(cx, cy, rad);
+            g.endFill();
+            // Sub-canopy clusters
+            for (let j = 0; j < 3; j++) {
+              g.beginFill(mix(canopyClr, brighten(base, 20 + rng() * 15), 0.5), 0.7);
+              g.drawCircle(cx + (rng() - 0.5) * rad, cy + (rng() - 0.5) * rad, rad * (0.4 + rng() * 0.3));
+              g.endFill();
+            }
+            // Highlight crescent (top-left)
+            g.beginFill(brighten(canopyClr, 30), 0.45);
+            g.drawEllipse(cx - rad * 0.3, cy - rad * 0.3, rad * 0.5, rad * 0.4);
+            g.endFill();
+          }
+          // Occasional gap showing forest floor
+          for (let i = 0; i < 3; i++) {
+            g.beginFill(mix(0x2A4A20, 0x3A5A2A, rng()), 0.5);
+            g.drawEllipse(rng() * ts, rng() * ts, 2 + rng() * 2, 1.5 + rng());
+            g.endFill();
+          }
+          break;
+        }
+
+        case 7: { // Hills
+          fillNoise(g, rng, base, 140, 25);
+          // 2-3 rounded hill profiles
+          const hillCount = 2 + Math.floor(rng() * 2);
+          for (let i = 0; i < hillCount; i++) {
+            const hx = rng() * ts;
+            const hy = ts * (0.4 + i * 0.2);
+            const hw = 15 + rng() * 12;
+            const hh = 8 + rng() * 8;
+            // Dark shadow side (right/bottom)
+            g.beginFill(darken(base, 25 + rng() * 15), 0.5);
+            g.drawEllipse(hx + 2, hy + 1, hw, hh * 0.9);
+            g.endFill();
+            // Main hill body
+            g.beginFill(mix(base, brighten(base, 10), 0.5), 0.7);
+            g.drawEllipse(hx, hy, hw, hh);
+            g.endFill();
+            // Light highlight (top-left)
+            g.beginFill(brighten(base, 25), 0.4);
+            g.drawEllipse(hx - hw * 0.25, hy - hh * 0.3, hw * 0.5, hh * 0.4);
+            g.endFill();
+            // Sparse grass on hilltop
+            g.lineStyle(1, mix(0x6A8A40, 0x7A9A50, rng()), 0.5);
+            for (let j = 0; j < 4; j++) {
+              const gx = hx + (rng() - 0.5) * hw * 0.8;
+              const gy2 = hy - hh * 0.4 + rng() * hh * 0.3;
+              g.moveTo(gx, gy2);
+              g.lineTo(gx + (rng() - 0.5) * 2, gy2 - 2 - rng() * 2);
+            }
+            g.lineStyle(0);
+          }
+          // Rocky outcrops
+          for (let i = 0; i < 4; i++) {
+            g.beginFill(mix(0x808080, 0x9A9A8A, rng()), 0.6);
+            const rx = rng() * ts, ry = rng() * ts;
+            g.drawPolygon([rx, ry - 2, rx - 2, ry + 1, rx + 2, ry + 1]);
+            g.endFill();
+          }
+          break;
+        }
+
+        case 8: { // Mountains
+          // Dark grey rocky base noise
+          fillNoise(g, rng, 0x5A5A6A, 160, 30);
+          // Rocky cliff texture
+          for (let i = 0; i < 25; i++) {
+            g.beginFill(mix(0x4A4A5A, 0x6A6A7A, rng()), 0.4);
+            g.drawRect(Math.floor(rng() * ts), Math.floor(rng() * ts), 1 + Math.floor(rng() * 3), 1 + Math.floor(rng() * 2));
+            g.endFill();
+          }
+          // 2-3 mountain peaks
+          const peakCount = 2 + Math.floor(rng() * 2);
+          for (let i = 0; i < peakCount; i++) {
+            const mx = 8 + rng() * (ts - 16);
+            const mBase = ts;
+            const peakH = 18 + rng() * 14;
+            const halfW = 8 + rng() * 6;
+            // Shadow side (right)
+            g.beginFill(0x3A3A4A, 0.7);
+            g.moveTo(mx + 2, mBase - peakH);
+            g.lineTo(mx + halfW + 3, mBase);
+            g.lineTo(mx + 2, mBase);
+            g.closePath();
+            g.endFill();
+            // Main mountain body (irregular sides)
+            g.beginFill(mix(0x5A5A6A, 0x7A7A8A, rng()), 0.9);
+            g.moveTo(mx, mBase - peakH);
+            g.lineTo(mx - halfW, mBase);
+            g.lineTo(mx + halfW, mBase);
+            g.closePath();
+            g.endFill();
+            // Light side (left)
+            g.beginFill(brighten(0x6A6A7A, 15), 0.4);
+            g.moveTo(mx, mBase - peakH);
+            g.lineTo(mx - halfW * 0.6, mBase - peakH * 0.3);
+            g.lineTo(mx - 1, mBase - peakH * 0.3);
+            g.closePath();
+            g.endFill();
+            // Snow cap (top third)
+            g.beginFill(0xF0F4FF, 0.9);
+            g.moveTo(mx, mBase - peakH);
+            g.lineTo(mx - halfW * 0.35, mBase - peakH * 0.65);
+            g.lineTo(mx + halfW * 0.35, mBase - peakH * 0.65);
+            g.closePath();
+            g.endFill();
+            // Snow drip edge
+            g.beginFill(0xE0E8F8, 0.5);
+            const snowY = mBase - peakH * 0.65;
+            for (let s = 0; s < 4; s++) {
+              const sx2 = mx + (rng() - 0.5) * halfW * 0.6;
+              g.drawRect(sx2, snowY, 1 + rng() * 2, 1 + rng() * 2);
+            }
+            g.endFill();
+          }
+          break;
+        }
+
+        case 9: { // Wetland
+          fillNoise(g, rng, base, 130, 20);
+          // Murky water layer
+          for (let i = 0; i < 30; i++) {
+            g.beginFill(mix(0x3A6A5A, 0x5A8A7A, rng()), 0.3);
+            g.drawRect(Math.floor(rng() * ts), Math.floor(rng() * ts), 2 + Math.floor(rng() * 3), 1);
+            g.endFill();
+          }
+          // Horizontal wavy water lines
+          for (let i = 0; i < 5; i++) {
+            const wy = 3 + i * (ts / 5);
+            g.lineStyle(1, mix(0x3A6A8A, 0x508898, rng()), 0.35);
+            g.moveTo(0, wy);
+            for (let x = 0; x <= ts; x += 3) {
+              g.lineTo(x, wy + Math.sin(x * 0.35 + i * 1.5) * 2);
+            }
+          }
+          g.lineStyle(0);
+          // Muddy patches
+          for (let i = 0; i < 5; i++) {
+            g.beginFill(mix(0x5A5030, 0x6A6040, rng()), 0.3);
+            g.drawEllipse(rng() * ts, rng() * ts, 3 + rng() * 4, 2 + rng() * 2);
+            g.endFill();
+          }
+          // Lily pads
+          for (let i = 0; i < 6; i++) {
+            g.beginFill(0x408838, 0.7);
+            g.drawCircle(rng() * ts, rng() * ts, 1.5 + rng());
+            g.endFill();
+          }
+          // Reed/cattail stalks
+          for (let i = 0; i < 7; i++) {
+            const rx = rng() * ts, ry = rng() * ts;
+            g.lineStyle(1, mix(0x5A7040, 0x6A8050, rng()), 0.8);
+            g.moveTo(rx, ry + 4);
+            g.lineTo(rx + (rng() - 0.5) * 2, ry - 6);
+            g.lineStyle(0);
+            // Cattail top
+            g.beginFill(0x6A4020, 0.85);
+            g.drawEllipse(rx + (rng() - 0.5), ry - 7, 1, 2.5);
+            g.endFill();
+          }
+          break;
+        }
+
+        case 10: { // Desert
+          // Fine sandy grain texture
+          const sandColors = [0xD4C088, 0xDDC890, 0xCCB878, 0xE0D098, 0xC8B070];
+          for (let i = 0; i < 220; i++) {
+            const c = sandColors[Math.floor(rng() * sandColors.length)];
+            g.beginFill(brighten(c, (rng() - 0.5) * 15), 0.5 + rng() * 0.5);
+            g.drawRect(Math.floor(rng() * ts), Math.floor(rng() * ts), 1, 1);
+            g.endFill();
+          }
+          // Sweeping dune curves
+          for (let i = 0; i < 3; i++) {
+            const dy = 8 + i * (ts / 3);
+            // Shadow trough
+            g.beginFill(darken(base, 20 + rng() * 10), 0.35);
+            for (let x = 0; x < ts; x += 2) {
+              const yOff = Math.sin(x * 0.12 + i * 1.5) * 5;
+              g.drawRect(x, dy + yOff + 2, 2, 3);
+            }
+            g.endFill();
+            // Light crest
+            g.beginFill(brighten(base, 20 + rng() * 15), 0.4);
+            for (let x = 0; x < ts; x += 2) {
+              const yOff = Math.sin(x * 0.12 + i * 1.5) * 5;
+              g.drawRect(x, dy + yOff - 2, 2, 2);
+            }
+            g.endFill();
+          }
+          // Heat shimmer band
+          g.beginFill(brighten(base, 18), 0.15);
+          g.drawRect(0, ts * 0.3, ts, 3);
           g.endFill();
-          g.beginFill(0x3388CC, 0.8);
-          g.drawCircle(ts / 2, ts / 2, 4);
+          // Tiny dark pebbles
+          for (let i = 0; i < 4; i++) {
+            g.beginFill(0x806848, 0.5);
+            g.drawCircle(rng() * ts, rng() * ts, 0.5 + rng() * 0.5);
+            g.endFill();
+          }
+          break;
+        }
+
+        case 11: { // Savanna
+          fillNoise(g, rng, base, 160, 22);
+          // Dry grass tufts
+          for (let i = 0; i < 30; i++) {
+            const gx = rng() * ts, gy = rng() * ts;
+            g.lineStyle(1, mix(0xA09040, 0xC0A848, rng()), 0.5 + rng() * 0.3);
+            g.moveTo(gx, gy);
+            g.lineTo(gx + (rng() - 0.5) * 2, gy - 2 - rng() * 3);
+          }
+          g.lineStyle(0);
+          // Brown dirt patches
+          for (let i = 0; i < 6; i++) {
+            g.beginFill(mix(0x907848, 0xA88858, rng()), 0.25);
+            g.drawEllipse(rng() * ts, rng() * ts, 3 + rng() * 4, 2 + rng() * 2);
+            g.endFill();
+          }
+          // 1-2 flat-topped acacia trees
+          const acaciaCount = 1 + Math.floor(rng() * 2);
+          for (let i = 0; i < acaciaCount; i++) {
+            const tx = 10 + rng() * (ts - 20), ty = ts * (0.5 + rng() * 0.2);
+            // Shadow
+            g.beginFill(0x504020, 0.25);
+            g.drawEllipse(tx + 2, ty + 14, 10, 2);
+            g.endFill();
+            // Trunk
+            g.beginFill(0x6A4828, 0.85);
+            g.drawRect(tx - 1, ty, 2, 14);
+            g.endFill();
+            // Wide flat canopy
+            g.beginFill(mix(0x708830, 0x889840, rng()), 0.8);
+            g.drawEllipse(tx, ty - 2, 10 + rng() * 4, 3 + rng() * 2);
+            g.endFill();
+            // Canopy highlight
+            g.beginFill(brighten(0x809838, 15), 0.4);
+            g.drawEllipse(tx - 2, ty - 3, 6, 2);
+            g.endFill();
+          }
+          break;
+        }
+
+        case 12: { // Mesa
+          fillNoise(g, rng, base, 120, 20);
+          // Horizontal stratification layers
+          const strataColors = [0xC07840, 0xD09050, 0xB06830, 0xE0A060, 0xA05828, 0xCC8848, 0xD89858];
+          for (let i = 0; i < 8; i++) {
+            const sy = Math.floor(i * (ts / 8));
+            const h = Math.floor(ts / 8) + 1;
+            const sc = strataColors[i % strataColors.length];
+            g.beginFill(brighten(sc, (rng() - 0.5) * 15), 0.5);
+            g.drawRect(0, sy, ts, h);
+            g.endFill();
+          }
+          // Flat top plateau shape
+          g.beginFill(brighten(base, 12), 0.35);
+          g.drawRect(4, 2, ts - 8, ts * 0.15);
+          g.endFill();
+          // Cliff face vertical cracks
+          g.lineStyle(1, darken(base, 30), 0.4);
+          for (let i = 0; i < 5; i++) {
+            const cx = 4 + rng() * (ts - 8);
+            g.moveTo(cx, ts * 0.15);
+            g.lineTo(cx + (rng() - 0.5) * 3, ts * 0.5);
+            g.lineTo(cx + (rng() - 0.5) * 4, ts * 0.85);
+          }
+          g.lineStyle(0);
+          // Shadow at base
+          g.beginFill(0x000000, 0.15);
+          g.drawRect(0, ts * 0.85, ts, ts * 0.15);
           g.endFill();
           break;
         }
-        case 14: { // Jungle — dense overlapping leaf/vine patterns
-          for (let i = 0; i < 8; i++) {
-            const lx = rng() * ts, ly = rng() * ts;
-            g.beginFill(mix(base, rng() > 0.5 ? 0x003810 : 0x105020, 0.3), 0.6);
-            g.drawEllipse(lx, ly, 3 + rng() * 3, 2 + rng() * 2);
+
+        case 13: { // Oasis
+          // Sandy border
+          g.beginFill(0xD4C088);
+          g.drawRect(0, 0, ts, ts);
+          g.endFill();
+          fillNoise(g, rng, 0xD4C088, 100, 15);
+          // Green vegetation ring
+          g.beginFill(0x50A050, 0.8);
+          g.drawCircle(ts / 2, ts / 2, ts * 0.38);
+          g.endFill();
+          // Lush green detail in ring
+          for (let i = 0; i < 30; i++) {
+            const ang = rng() * Math.PI * 2;
+            const r = ts * 0.22 + rng() * ts * 0.16;
+            const px = ts / 2 + Math.cos(ang) * r;
+            const py = ts / 2 + Math.sin(ang) * r;
+            g.beginFill(mix(0x408838, 0x60B058, rng()), 0.6 + rng() * 0.3);
+            g.drawCircle(px, py, 1 + rng() * 2);
             g.endFill();
           }
-          g.lineStyle(1, 0x0A3A10, 0.3);
-          for (let i = 0; i < 3; i++) {
+          // Blue water pool
+          g.beginFill(0x3088CC, 0.9);
+          g.drawCircle(ts / 2, ts / 2, ts * 0.18);
+          g.endFill();
+          // Water highlight
+          g.beginFill(0x60B0E8, 0.4);
+          g.drawEllipse(ts / 2 - 2, ts / 2 - 2, ts * 0.1, ts * 0.08);
+          g.endFill();
+          // 2-3 palm trees
+          for (let i = 0; i < 2 + Math.floor(rng() * 2); i++) {
+            const ang = rng() * Math.PI * 2;
+            const r = ts * 0.26;
+            const px = ts / 2 + Math.cos(ang) * r;
+            const py = ts / 2 + Math.sin(ang) * r;
+            // Curved trunk
+            g.lineStyle(2, 0x7A5A30, 0.85);
+            g.moveTo(px, py + 4);
+            g.quadraticCurveTo(px + (rng() - 0.5) * 4, py, px + (rng() - 0.5) * 3, py - 5);
+            g.lineStyle(0);
+            // Frond cluster
+            for (let f = 0; f < 5; f++) {
+              const fa = (f / 5) * Math.PI * 2;
+              g.lineStyle(1, 0x308828, 0.8);
+              g.moveTo(px + (rng() - 0.5) * 3, py - 5);
+              g.lineTo(px + Math.cos(fa) * 5, py - 5 + Math.sin(fa) * 4);
+            }
+            g.lineStyle(0);
+          }
+          break;
+        }
+
+        case 14: { // Jungle
+          // Very dark dense base
+          g.beginFill(0x0E3818);
+          g.drawRect(0, 0, ts, ts);
+          g.endFill();
+          fillNoise(g, rng, 0x1A5028, 180, 30);
+          // Dense shadow throughout
+          for (let i = 0; i < 40; i++) {
+            g.beginFill(0x0A2010, 0.3 + rng() * 0.2);
+            g.drawEllipse(rng() * ts, rng() * ts, 2 + rng() * 4, 1 + rng() * 3);
+            g.endFill();
+          }
+          // Packed overlapping leaf shapes
+          const leafColors = [0x1A5028, 0x226030, 0x2A7038, 0x185020, 0x307040];
+          for (let i = 0; i < 25; i++) {
+            const c = leafColors[Math.floor(rng() * leafColors.length)];
+            g.beginFill(brighten(c, (rng() - 0.5) * 20), 0.6 + rng() * 0.3);
+            g.drawEllipse(rng() * ts, rng() * ts, 3 + rng() * 5, 2 + rng() * 3);
+            g.endFill();
+          }
+          // Hanging vines
+          g.lineStyle(1, 0x0A3A10, 0.5);
+          for (let i = 0; i < 5; i++) {
             const vx = rng() * ts;
             g.moveTo(vx, 0);
-            g.quadraticCurveTo(vx + (rng() - 0.5) * 10, ts * 0.5, vx + (rng() - 0.5) * 8, ts);
+            g.quadraticCurveTo(vx + (rng() - 0.5) * 12, ts * 0.4, vx + (rng() - 0.5) * 10, ts);
           }
           g.lineStyle(0);
-          break;
-        }
-        case 15: { // Volcanic — orange/red glow spots
+          // Bright flower dots
           for (let i = 0; i < 5; i++) {
-            const lx = rng() * ts, ly = rng() * ts;
-            const glowClr = rng() > 0.5 ? 0xCC4400 : 0xFF6600;
-            g.beginFill(glowClr, 0.3 + rng() * 0.3);
-            g.drawCircle(lx, ly, 2 + rng() * 2);
+            const fc = rng() > 0.5 ? 0xDD3030 : 0xDDCC20;
+            g.beginFill(fc, 0.6 + rng() * 0.3);
+            g.drawCircle(rng() * ts, rng() * ts, 0.8 + rng() * 0.8);
             g.endFill();
           }
-          g.beginFill(0xFF3300, 0.15);
-          g.drawCircle(ts * 0.5, ts * 0.5, 6);
+          // Topmost dark canopy overlay
+          for (let i = 0; i < 15; i++) {
+            g.beginFill(0x0A2810, 0.2 + rng() * 0.15);
+            g.drawEllipse(rng() * ts, rng() * ts, 4 + rng() * 6, 3 + rng() * 4);
+            g.endFill();
+          }
+          break;
+        }
+
+        case 15: { // Volcanic
+          // Dark basalt base
+          g.beginFill(0x3A2020);
+          g.drawRect(0, 0, ts, ts);
           g.endFill();
-          break;
-        }
-        case 16: { // Coast — subtle wave arcs
-          g.lineStyle(1, mix(base, 0x88CCEE, 0.4), 0.35);
+          fillNoise(g, rng, 0x4A2828, 160, 20);
+          // Dark rocky texture
+          for (let i = 0; i < 30; i++) {
+            g.beginFill(mix(0x2A1818, 0x4A3030, rng()), 0.5);
+            g.drawRect(Math.floor(rng() * ts), Math.floor(rng() * ts), 1 + Math.floor(rng() * 3), 1 + Math.floor(rng() * 2));
+            g.endFill();
+          }
+          // Lava vein cracks
           for (let i = 0; i < 4; i++) {
-            const wy = 4 + i * 8;
-            g.moveTo(0, wy);
-            g.quadraticCurveTo(ts * 0.25, wy - 3, ts * 0.5, wy);
-            g.quadraticCurveTo(ts * 0.75, wy + 3, ts, wy);
+            let cx = rng() * ts, cy = rng() * ts;
+            // Glow around crack
+            g.lineStyle(3, 0xFF4400, 0.15);
+            g.moveTo(cx, cy);
+            const segs = 3 + Math.floor(rng() * 4);
+            for (let s = 0; s < segs; s++) {
+              cx += (rng() - 0.5) * 16;
+              cy += (rng() - 0.5) * 16;
+              g.lineTo(cx, cy);
+            }
+            // Bright crack core
+            cx = rng() * ts; cy = rng() * ts;
+            g.lineStyle(1, mix(0xFF6600, 0xFFAA00, rng()), 0.7 + rng() * 0.3);
+            g.moveTo(cx, cy);
+            for (let s = 0; s < segs; s++) {
+              cx += (rng() - 0.5) * 14;
+              cy += (rng() - 0.5) * 14;
+              g.lineTo(cx, cy);
+            }
           }
           g.lineStyle(0);
-          break;
-        }
-        case 17: { // Ocean — darker wave patterns
-          g.lineStyle(1, mix(base, 0x0A1A44, 0.3), 0.4);
-          for (let i = 0; i < 4; i++) {
-            const wy = 3 + i * 8;
-            g.moveTo(0, wy);
-            g.quadraticCurveTo(ts * 0.3, wy - 3, ts * 0.5, wy);
-            g.quadraticCurveTo(ts * 0.7, wy + 3, ts, wy);
-          }
-          g.lineStyle(0);
-          break;
-        }
-        case 18: { // Reef — coral blobs
+          // Glowing red hotspots
           for (let i = 0; i < 5; i++) {
-            const cx = 3 + rng() * (ts - 6), cy = 3 + rng() * (ts - 6);
-            const clr = rng() > 0.5 ? 0xDD6688 : 0xDD8844;
-            g.beginFill(clr, 0.6);
-            g.drawCircle(cx, cy, 1.5 + rng() * 2);
+            const hx = rng() * ts, hy = rng() * ts;
+            g.beginFill(0xFF2200, 0.2);
+            g.drawCircle(hx, hy, 3 + rng() * 3);
+            g.endFill();
+            g.beginFill(0xFF6600, 0.4);
+            g.drawCircle(hx, hy, 1.5 + rng());
+            g.endFill();
+          }
+          // Smoke/steam wisps
+          for (let i = 0; i < 4; i++) {
+            g.beginFill(0x888888, 0.1 + rng() * 0.1);
+            g.drawCircle(rng() * ts, rng() * ts * 0.5, 3 + rng() * 4);
             g.endFill();
           }
           break;
         }
-        case 19: { // River Delta — branching blue river lines
-          g.lineStyle(1, 0x3388BB, 0.6);
-          const startX = ts * 0.5;
-          g.moveTo(startX, 0);
-          g.lineTo(startX, ts * 0.35);
-          // Branches
-          g.moveTo(startX, ts * 0.35);
-          g.lineTo(startX - 8, ts * 0.7);
-          g.lineTo(startX - 12, ts);
-          g.moveTo(startX, ts * 0.35);
-          g.lineTo(startX + 3, ts * 0.65);
-          g.lineTo(startX + 10, ts);
-          g.moveTo(startX + 3, ts * 0.65);
-          g.lineTo(startX - 2, ts);
+
+        case 16: { // Coast
+          // Sand strip (right side)
+          g.beginFill(0xD8C890);
+          g.drawRect(ts * 0.65, 0, ts * 0.35, ts);
+          g.endFill();
+          fillNoise(g, rng, 0xD0C080, 60, 15);
+          // Water portion (left side)
+          g.beginFill(0x4488BB);
+          g.drawRect(0, 0, ts * 0.6, ts);
+          g.endFill();
+          // Water noise
+          for (let i = 0; i < 80; i++) {
+            g.beginFill(mix(0x3878AA, 0x5098CC, rng()), 0.4 + rng() * 0.4);
+            g.drawRect(Math.floor(rng() * ts * 0.6), Math.floor(rng() * ts), 1 + Math.floor(rng() * 2), 1);
+            g.endFill();
+          }
+          // Underwater hint (darker deeper water)
+          g.beginFill(0x2A6690, 0.3);
+          g.drawRect(0, 0, ts * 0.3, ts);
+          g.endFill();
+          // Gentle wave arcs
+          for (let i = 0; i < 4; i++) {
+            const wy = 4 + i * (ts / 4);
+            g.lineStyle(1, mix(0x5AA0CC, 0x88C0E0, rng()), 0.4);
+            g.moveTo(0, wy);
+            for (let x = 0; x <= ts * 0.65; x += 4) {
+              g.lineTo(x, wy + Math.sin(x * 0.2 + i) * 2);
+            }
+          }
           g.lineStyle(0);
+          // White foam/surf line
+          for (let y = 0; y < ts; y += 2) {
+            const fx = ts * 0.6 + Math.sin(y * 0.3) * 2;
+            g.beginFill(0xFFFFFF, 0.5 + rng() * 0.3);
+            g.drawRect(fx, y, 2 + rng() * 2, 2);
+            g.endFill();
+          }
+          // Sand noise on beach
+          for (let i = 0; i < 50; i++) {
+            g.beginFill(mix(0xC8B878, 0xE0D098, rng()), 0.4 + rng() * 0.4);
+            g.drawRect(Math.floor(ts * 0.65 + rng() * ts * 0.35), Math.floor(rng() * ts), 1, 1);
+            g.endFill();
+          }
+          break;
+        }
+
+        case 17: { // Ocean
+          fillNoise(g, rng, base, 180, 25);
+          // Deep dark areas
+          for (let i = 0; i < 15; i++) {
+            g.beginFill(darken(base, 20 + rng() * 20), 0.3);
+            g.drawEllipse(rng() * ts, rng() * ts, 3 + rng() * 5, 2 + rng() * 3);
+            g.endFill();
+          }
+          // Undulating wave patterns — curved lines
+          for (let i = 0; i < 6; i++) {
+            const wy = 2 + i * (ts / 6);
+            const lightWave = mix(base, 0x4488CC, 0.3 + rng() * 0.2);
+            g.lineStyle(1, lightWave, 0.35);
+            g.moveTo(0, wy);
+            for (let x = 0; x <= ts; x += 3) {
+              g.lineTo(x, wy + Math.sin(x * 0.2 + i * 1.2) * 2.5);
+            }
+          }
+          g.lineStyle(0);
+          // Lighter wave depth bands
+          for (let i = 0; i < 3; i++) {
+            const by = rng() * ts;
+            g.beginFill(brighten(base, 12), 0.2);
+            g.drawRect(0, by, ts, 2 + rng() * 3);
+            g.endFill();
+          }
+          // White wave caps
+          for (let i = 0; i < 8; i++) {
+            g.beginFill(0xFFFFFF, 0.15 + rng() * 0.2);
+            g.drawRect(Math.floor(rng() * ts), Math.floor(rng() * ts), 2 + Math.floor(rng() * 2), 1);
+            g.endFill();
+          }
+          break;
+        }
+
+        case 18: { // Reef
+          // Turquoise water base
+          fillNoise(g, rng, 0x40A0A8, 140, 20);
+          // Light ripple pattern
+          for (let i = 0; i < 4; i++) {
+            const wy = rng() * ts;
+            g.lineStyle(1, brighten(0x40A0A8, 20), 0.2);
+            g.moveTo(0, wy);
+            for (let x = 0; x <= ts; x += 3) {
+              g.lineTo(x, wy + Math.sin(x * 0.25 + i) * 1.5);
+            }
+          }
+          g.lineStyle(0);
+          // Colorful coral structures
+          const coralColors = [0xDD6688, 0xDD8844, 0xDDCC44, 0xFF8866, 0xCC66AA];
+          for (let i = 0; i < 7; i++) {
+            const cx = 4 + rng() * (ts - 8), cy = 4 + rng() * (ts - 8);
+            const cc = coralColors[Math.floor(rng() * coralColors.length)];
+            // Branching coral: connected circles
+            g.beginFill(cc, 0.7 + rng() * 0.2);
+            g.drawCircle(cx, cy, 2 + rng() * 2);
+            g.endFill();
+            for (let b = 0; b < 3; b++) {
+              const bx = cx + (rng() - 0.5) * 6;
+              const by = cy + (rng() - 0.5) * 6;
+              g.beginFill(brighten(cc, (rng() - 0.5) * 20), 0.6 + rng() * 0.2);
+              g.drawCircle(bx, by, 1 + rng() * 1.5);
+              g.endFill();
+            }
+          }
+          // Fish-like tiny dots
+          for (let i = 0; i < 5; i++) {
+            const fc = rng() > 0.5 ? 0xFFCC00 : 0xFF6644;
+            g.beginFill(fc, 0.6);
+            g.drawEllipse(rng() * ts, rng() * ts, 1.5, 0.8);
+            g.endFill();
+          }
+          break;
+        }
+
+        case 19: { // River Delta
+          fillNoise(g, rng, base, 150, 22);
+          // Dense vegetation between channels
+          for (let i = 0; i < 30; i++) {
+            g.beginFill(mix(0x50A048, 0x70B060, rng()), 0.4 + rng() * 0.3);
+            g.drawEllipse(rng() * ts, rng() * ts, 2 + rng() * 3, 1.5 + rng() * 2);
+            g.endFill();
+          }
+          // Main channel splitting into tributaries
+          const startX = ts * 0.45 + rng() * ts * 0.1;
+          g.lineStyle(3, 0x3088BB, 0.7);
+          g.moveTo(startX, 0);
+          g.quadraticCurveTo(startX + 2, ts * 0.15, startX + 1, ts * 0.3);
+          g.lineStyle(2, 0x3088BB, 0.7);
+          // Left branch
+          g.moveTo(startX + 1, ts * 0.3);
+          g.quadraticCurveTo(startX - 6, ts * 0.5, startX - 12, ts * 0.75);
+          g.lineStyle(1, 0x3088BB, 0.6);
+          g.lineTo(startX - 16, ts);
+          // Middle branch
+          g.lineStyle(2, 0x3088BB, 0.65);
+          g.moveTo(startX + 1, ts * 0.3);
+          g.quadraticCurveTo(startX + 2, ts * 0.55, startX, ts * 0.75);
+          g.lineStyle(1, 0x3088BB, 0.55);
+          g.lineTo(startX - 2, ts);
+          // Right branch
+          g.lineStyle(2, 0x3088BB, 0.65);
+          g.moveTo(startX + 1, ts * 0.3);
+          g.quadraticCurveTo(startX + 8, ts * 0.5, startX + 14, ts * 0.8);
+          g.lineStyle(1, 0x3088BB, 0.5);
+          g.lineTo(startX + 18, ts);
+          // Far-right sub-branch
+          g.lineStyle(1, 0x3088BB, 0.45);
+          g.moveTo(startX + 8, ts * 0.5);
+          g.lineTo(startX + 20, ts * 0.85);
+          g.lineStyle(0);
+          // Silt deposits near water
+          for (let i = 0; i < 8; i++) {
+            g.beginFill(mix(0xC0B080, 0xD0C090, rng()), 0.3 + rng() * 0.2);
+            const sx2 = startX + (rng() - 0.5) * 20;
+            const sy2 = ts * 0.4 + rng() * ts * 0.5;
+            g.drawEllipse(sx2, sy2, 2 + rng() * 3, 1 + rng() * 2);
+            g.endFill();
+          }
           break;
         }
       }
@@ -375,16 +940,9 @@ const Renderer = {
       renderer.render(g, { renderTexture: rt });
       this.terrainTextures[id] = rt;
 
-      // Render fog-dimmed variant (multiply by 0.4)
-      const fogG = new PIXI.Graphics();
-      fogG.beginFill(base);
-      fogG.drawRect(0, 0, ts, ts);
-      fogG.endFill();
-
-      // Redraw the same pattern but with dimmed colors via a dark overlay
+      // Render fog-dimmed variant
       const fogRt = PIXI.RenderTexture.create({ width: ts, height: ts });
       renderer.render(g, { renderTexture: fogRt });
-      // Apply darkening overlay
       const overlay = new PIXI.Graphics();
       overlay.beginFill(0x000000, 0.6);
       overlay.drawRect(0, 0, ts, ts);
@@ -393,7 +951,6 @@ const Renderer = {
       this.terrainFogTextures[id] = fogRt;
 
       g.destroy(true);
-      fogG.destroy(true);
       overlay.destroy(true);
     }
   },
