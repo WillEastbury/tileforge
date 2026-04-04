@@ -1,4 +1,4 @@
-// TileForge — Game Data Definitions
+// Apollo's Time — Game Data Definitions
 "use strict";
 
 const ERAS = ['caveman','ancient','classical','medieval','renaissance','industrial','modern','ai','mars'];

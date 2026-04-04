@@ -1,4 +1,4 @@
-// TileForge — PixiJS Map Renderer
+// Apollo's Time — PixiJS Map Renderer
 "use strict";
 
 const Renderer = {

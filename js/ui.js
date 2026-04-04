@@ -1,4 +1,4 @@
-// TileForge — UI Manager
+// Apollo's Time — UI Manager
 "use strict";
 
 const UI = {
@@ -189,7 +189,7 @@ const UI = {
       const p = Game.state.players[unit.owner];
       panel.innerHTML = `
         <div class="unit-card">
-          <h4>${Renderer.getUnitIcon(uType)} ${uType.name} <span class="ency-ref" onclick="UI.showEncyclopedia('units','${uType.id}')" title="Tileopedia">📖</span></h4>
+          <h4>${Renderer.getUnitIcon(uType)} ${uType.name} <span class="ency-ref" onclick="UI.showEncyclopedia('units','${uType.id}')" title="Book of Apollo">📖</span></h4>
           <div class="stats">
             <div>Owner: ${p.name}</div>
             <div>Era: ${ERA_NAMES[uType.era]}</div>
@@ -483,7 +483,7 @@ const UI = {
           <div class="tech-buttons">
             ${cls === 'available' ? `<button class="tech-btn-research" onclick="event.stopPropagation();selectTech('${tech.id}')">Research</button>` : ''}
             ${cls === 'current' ? `<button class="tech-btn-cancel" onclick="event.stopPropagation();cancelResearch()">Cancel</button>` : ''}
-            <button class="tech-btn-ency" onclick="event.stopPropagation();UI.showEncyclopedia('technologies','${tech.id}')" title="Tileopedia">📖</button>
+            <button class="tech-btn-ency" onclick="event.stopPropagation();UI.showEncyclopedia('technologies','${tech.id}')" title="Book of Apollo">📖</button>
           </div>
         </div>`;
       }

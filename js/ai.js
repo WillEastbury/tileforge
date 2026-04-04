@@ -1,4 +1,4 @@
-// TileForge — AI Opponent Logic
+// Apollo's Time — AI Opponent Logic
 "use strict";
 
 const AI = {

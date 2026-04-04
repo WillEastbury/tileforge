@@ -17,4 +17,4 @@ http.createServer((req, res) => {
     res.writeHead(200, {'Content-Type': MIME[ext] || 'application/octet-stream'});
     res.end(data);
   });
-}).listen(PORT, () => console.log('TileForge on port ' + PORT));
+}).listen(PORT, () => console.log('Apollo\'s Time on port ' + PORT));

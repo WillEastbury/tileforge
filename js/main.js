@@ -1,4 +1,4 @@
-// TileForge — Main Entry Point
+// Apollo's Time — Main Entry Point
 "use strict";
 
 function startNewGame() {
@@ -35,7 +35,7 @@ function startNewGame() {
   Renderer.updateMinimap();
   UI.updateTopBar();
   UI.updateRightPanel();
-  UI.notify('Welcome to TileForge! Found your civilization and conquer the world.');
+  UI.notify('Welcome to Apollo\'s Time! Found your civilization and conquer the world.');
 }
 
 function selectTech(techId) {

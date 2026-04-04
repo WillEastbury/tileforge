@@ -1,4 +1,4 @@
-// TileForge — Core Game Engine
+// Apollo's Time — Core Game Engine
 "use strict";
 
 const Game = {
