@@ -13,6 +13,7 @@ const SaveManager = {
       date: new Date().toLocaleString(),
       civName: Game.state.config.civName,
       turn: Game.state.turn,
+      year: Game.getYearString(),
       era: ERA_NAMES[Game.state.players[0].era],
       data
     };

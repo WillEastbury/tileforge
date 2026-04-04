@@ -61,7 +61,7 @@ const UI = {
         slot.innerHTML = `
           <div class="slot-info">
             <div class="slot-name">Slot ${i + 1}: ${save.civName}</div>
-            <div class="slot-detail">Turn ${save.turn} | ${save.era} Era | ${save.date}</div>
+            <div class="slot-detail">${save.year || ('Turn ' + save.turn)} | ${save.era} Era | ${save.date}</div>
           </div>
           <div class="slot-actions">
             ${mode === 'load'
@@ -137,7 +137,7 @@ const UI = {
     document.querySelector('#res-culture b').textContent = cul;
     document.querySelector('#res-history b').textContent = Math.floor(p.totalHistory);
 
-    document.getElementById('turn-display').textContent = 'Turn ' + Game.state.turn;
+    document.getElementById('turn-display').textContent = Game.getYearString() + ' (Turn ' + Game.state.turn + ')';
     document.getElementById('era-display').textContent = ERA_ICONS[p.era] + ' ' + ERA_NAMES[p.era] + ' Era';
 
     // Resource tooltip hover handlers

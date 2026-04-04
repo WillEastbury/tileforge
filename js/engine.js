@@ -9,6 +9,20 @@ const Game = {
   movementRange: null,
   attackTargets: null,
 
+  START_YEAR: -3000, // 3000 BC
+
+  getYear() {
+    if (!this.state) return this.START_YEAR;
+    return this.START_YEAR + this.state.turn;
+  },
+
+  getYearString() {
+    const y = this.getYear();
+    if (y < 0) return Math.abs(y) + ' BC';
+    if (y === 0) return '1 AD';
+    return y + ' AD';
+  },
+
   // Initialize a new game
   init(config) {
     const sz = MAP_SIZES[config.mapSize];
@@ -1170,8 +1184,8 @@ const Game = {
       }
     }
 
-    // Score victory at turn 400
-    if (this.state.turn >= 400) {
+    // Score victory at 2100 AD
+    if (this.getYear() >= 2100) {
       this.state.gameOver = true;
       let best = null, bestScore = -1;
       for (const p of this.state.players) {
