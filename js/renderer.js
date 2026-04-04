@@ -1516,6 +1516,41 @@ const Renderer = {
         tileSprite.tint = (tR << 16) | (tG << 8) | tB;
         this.terrainLayer.addChild(tileSprite);
 
+        // Diagonal corner beach patches for coast tiles
+        if (tile.terrain === 16 && fog >= 1) {
+          const [nT, eT, sT, wT] = this.getCardinalNeighborTerrains(r, c);
+          const mapH = Game.state.mapHeight, mapW = Game.state.mapWidth;
+          const diagCorners = [
+            {dr:-1, dc:-1, cardA: nT, cardB: wT, cx: 0, cy: 0},       // NW
+            {dr:-1, dc: 1, cardA: nT, cardB: eT, cx: tileW, cy: 0},   // NE
+            {dr: 1, dc:-1, cardA: sT, cardB: wT, cx: 0, cy: ts},      // SW
+            {dr: 1, dc: 1, cardA: sT, cardB: eT, cx: tileW, cy: ts}   // SE
+          ];
+          for (const dc of diagCorners) {
+            // Only draw corner patch when diagonal is land but NEITHER cardinal neighbor is land
+            const diagR = ((r + dc.dr) % mapH + mapH) % mapH;
+            const diagC = ((c + dc.dc) % mapW + mapW) % mapW;
+            const diagT = Game.mapData[diagR][diagC].terrain;
+            if (!isWaterTerrain(diagT) && isWaterTerrain(dc.cardA) && isWaterTerrain(dc.cardB)) {
+              const cg = new PIXI.Graphics();
+              const sandColor = 0xD8C890;
+              // Radial sand patch at corner
+              for (let s = 0; s < 6; s++) {
+                const t = s / 6;
+                const rad = 10 * (1 - t);
+                cg.beginFill(sandColor, 0.7 * (1 - t) * (1 - t));
+                cg.drawCircle(px + dc.cx, py + dc.cy, rad);
+                cg.endFill();
+              }
+              // Small foam arc
+              cg.lineStyle(1, 0xFFFFFF, 0.3);
+              cg.drawCircle(px + dc.cx, py + dc.cy, 11);
+              cg.lineStyle(0);
+              this.terrainLayer.addChild(cg);
+            }
+          }
+        }
+
         // Edge blending overlay for terrain transitions
         if (fog === 2) {
           const [nT, eT, sT, wT] = this.getCardinalNeighborTerrains(r, c);
