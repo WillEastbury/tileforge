@@ -1063,7 +1063,12 @@ const Game = {
       if (!u) return;
       name = u.name; cost = u.cost;
     }
-    city.buildQueue = {type, id, name, progress: 0, cost};
+    // If switching from an existing build, carry over 50% of progress
+    let carryOver = 0;
+    if (city.buildQueue && city.buildQueue.progress > 0) {
+      carryOver = Math.floor(city.buildQueue.progress * 0.5);
+    }
+    city.buildQueue = {type, id, name, progress: carryOver, cost};
   },
 
   // ========== FOG OF WAR ==========

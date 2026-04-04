@@ -451,6 +451,7 @@ const UI = {
         <div class="build-item">
           <span>${city.buildQueue.name} (${turnsLeft} turns)</span>
           <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+          <small style="color:var(--text-dim)">${city.buildQueue.progress}/${city.buildQueue.cost} ⚙️${pct > 0 ? ' — switching loses 50% progress' : ''}</small>
         </div>
       `;
     } else {

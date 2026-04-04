@@ -57,6 +57,12 @@ function cancelResearch() {
 function buildInCity(cityId, type, itemId) {
   const city = Game.findCityById(cityId);
   if (!city || city.owner !== 0) return;
+  // Warn if switching from an in-progress build
+  if (city.buildQueue && city.buildQueue.progress > 0 && (city.buildQueue.type !== type || city.buildQueue.id !== itemId)) {
+    const lost = Math.ceil(city.buildQueue.progress * 0.5);
+    const kept = Math.floor(city.buildQueue.progress * 0.5);
+    if (!confirm(`Switch from ${city.buildQueue.name}? You'll lose ${lost} production (${kept} will carry over to the new build).`)) return;
+  }
   Game.startBuild(city, type, itemId);
   UI.showCityPanel(city);
 }
