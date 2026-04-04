@@ -1,6 +1,24 @@
 // Apollo's Time — PixiJS Map Renderer
 "use strict";
 
+function getTerrainCategory(terrainId) {
+  if (terrainId < 0) return 'edge';
+  if (terrainId === 0) return 'ice';
+  if (terrainId === 3) return 'frozen_water';
+  if (terrainId === 16) return 'coast';
+  if (terrainId === 17) return 'ocean';
+  if (terrainId === 18) return 'reef';
+  if (TERRAINS[terrainId] && TERRAINS[terrainId].water) return 'water';
+  if ([10, 12].includes(terrainId)) return 'desert';
+  if ([0, 1].includes(terrainId)) return 'snow';
+  if ([2, 6, 14].includes(terrainId)) return 'forest';
+  return 'land';
+}
+
+function isWaterTerrain(terrainId) {
+  return terrainId >= 0 && TERRAINS[terrainId] && TERRAINS[terrainId].water;
+}
+
 const Renderer = {
   app: null,
   mapContainer: null,
@@ -17,6 +35,9 @@ const Renderer = {
   highlightSprites: [],
   terrainTextures: [],
   terrainFogTextures: [],
+  coastTextures: [],
+  coastFogTextures: [],
+  contextTextureCache: {},
   initialized: false,
   animations: [],
   animating: false,
@@ -953,6 +974,250 @@ const Renderer = {
       g.destroy(true);
       overlay.destroy(true);
     }
+
+    // Generate 16 coast autotile variants based on which edges border land
+    this.generateCoastAutotiles();
+  },
+
+  generateCoastAutotiles() {
+    const ts = this.tileSize;
+    const renderer = this.app.renderer;
+
+    const rr = (c) => (c >> 16) & 0xFF;
+    const gg = (c) => (c >> 8) & 0xFF;
+    const bb = (c) => c & 0xFF;
+    const rgb = (r, g, b) => ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
+    const mix = (c1, c2, t) => rgb(
+      Math.round(rr(c1) + (rr(c2) - rr(c1)) * t),
+      Math.round(gg(c1) + (gg(c2) - gg(c1)) * t),
+      Math.round(bb(c1) + (bb(c2) - bb(c1)) * t)
+    );
+    const clamp = (v) => Math.max(0, Math.min(255, Math.round(v)));
+    const brighten = (c, amt) => rgb(clamp(rr(c) + amt), clamp(gg(c) + amt), clamp(bb(c) + amt));
+    const darken = (c, amt) => brighten(c, -amt);
+    const seed = (s) => { let v = s; return () => { v = (v * 1664525 + 1013904223) & 0xFFFFFFFF; return (v >>> 0) / 4294967296; }; };
+
+    const waterBase = 0x4488BB;
+    const sandColor = 0xD8C890;
+    const sandDark = 0xC8B878;
+    const sandLight = 0xE0D098;
+    const foamColor = 0xFFFFFF;
+    const deepWater = 0x2A6690;
+    const waveColor1 = 0x5AA0CC;
+    const waveColor2 = 0x88C0E0;
+
+    this.coastTextures = [];
+    this.coastFogTextures = [];
+
+    for (let mask = 0; mask < 16; mask++) {
+      const landN = !!(mask & 1);
+      const landE = !!(mask & 2);
+      const landS = !!(mask & 4);
+      const landW = !!(mask & 8);
+      const landCount = (landN ? 1 : 0) + (landE ? 1 : 0) + (landS ? 1 : 0) + (landW ? 1 : 0);
+
+      const g = new PIXI.Graphics();
+      const rng = seed(mask * 7717 + 4201);
+      const beachWidth = 12;
+
+      // Fill water base
+      g.beginFill(waterBase);
+      g.drawRect(0, 0, ts, ts);
+      g.endFill();
+
+      // Water noise
+      for (let i = 0; i < 120; i++) {
+        g.beginFill(mix(0x3878AA, 0x5098CC, rng()), 0.4 + rng() * 0.4);
+        g.drawRect(Math.floor(rng() * ts), Math.floor(rng() * ts), 1 + Math.floor(rng() * 2), 1);
+        g.endFill();
+      }
+
+      // Deeper water tint in center if surrounded by land
+      if (landCount >= 3) {
+        g.beginFill(deepWater, 0.3);
+        g.drawEllipse(ts / 2, ts / 2, ts / 4, ts / 4);
+        g.endFill();
+      }
+
+      // Wave arcs in water areas
+      for (let i = 0; i < 5; i++) {
+        const wy = 4 + i * (ts / 5);
+        g.lineStyle(1, mix(waveColor1, waveColor2, rng()), 0.3 + rng() * 0.15);
+        g.moveTo(0, wy);
+        for (let x = 0; x <= ts; x += 4) {
+          g.lineTo(x, wy + Math.sin(x * 0.2 + i * 1.3 + mask) * 2);
+        }
+      }
+      g.lineStyle(0);
+
+      // Draw sand strips on each land-bordering edge
+      const edges = [
+        { land: landN, drawSand: (depth, alpha) => { g.beginFill(sandColor, alpha); g.drawRect(0, 0, ts, depth); g.endFill(); }, foamY: (fy) => { return { x1: 0, y1: beachWidth - 1, x2: ts, y2: beachWidth - 1, dir: 'h' }; }, dir: 'N' },
+        { land: landE, drawSand: (depth, alpha) => { g.beginFill(sandColor, alpha); g.drawRect(ts - depth, 0, depth, ts); g.endFill(); }, foamY: (fy) => { return { x1: ts - beachWidth, y1: 0, x2: ts - beachWidth, y2: ts, dir: 'v' }; }, dir: 'E' },
+        { land: landS, drawSand: (depth, alpha) => { g.beginFill(sandColor, alpha); g.drawRect(0, ts - depth, ts, depth); g.endFill(); }, foamY: (fy) => { return { x1: 0, y1: ts - beachWidth, x2: ts, y2: ts - beachWidth, dir: 'h' }; }, dir: 'S' },
+        { land: landW, drawSand: (depth, alpha) => { g.beginFill(sandColor, alpha); g.drawRect(0, 0, depth, ts); g.endFill(); }, foamY: (fy) => { return { x1: beachWidth, y1: 0, x2: beachWidth, y2: ts, dir: 'v' }; }, dir: 'W' }
+      ];
+
+      for (const edge of edges) {
+        if (!edge.land) continue;
+
+        // Sandy gradient from edge inward (multiple strips with decreasing alpha)
+        for (let d = 0; d < beachWidth; d += 2) {
+          const alpha = 0.9 - (d / beachWidth) * 0.7;
+          const col = mix(sandColor, waterBase, d / beachWidth);
+          g.beginFill(col, alpha);
+          if (edge.dir === 'N') g.drawRect(0, d, ts, 2);
+          else if (edge.dir === 'S') g.drawRect(0, ts - beachWidth + d, ts, 2);
+          else if (edge.dir === 'E') g.drawRect(ts - beachWidth + d, 0, 2, ts);
+          else if (edge.dir === 'W') g.drawRect(d, 0, 2, ts);
+          g.endFill();
+        }
+
+        // Sand noise on beach portion
+        for (let i = 0; i < 35; i++) {
+          g.beginFill(mix(sandDark, sandLight, rng()), 0.4 + rng() * 0.4);
+          let sx, sy;
+          if (edge.dir === 'N') { sx = Math.floor(rng() * ts); sy = Math.floor(rng() * beachWidth); }
+          else if (edge.dir === 'S') { sx = Math.floor(rng() * ts); sy = ts - beachWidth + Math.floor(rng() * beachWidth); }
+          else if (edge.dir === 'E') { sx = ts - beachWidth + Math.floor(rng() * beachWidth); sy = Math.floor(rng() * ts); }
+          else { sx = Math.floor(rng() * beachWidth); sy = Math.floor(rng() * ts); }
+          g.drawRect(sx, sy, 1, 1);
+          g.endFill();
+        }
+
+        // Foam/surf line at the water-sand boundary
+        const foam = edge.foamY();
+        if (foam.dir === 'h') {
+          for (let x = 0; x < ts; x += 2) {
+            const fy = foam.y1 + Math.sin(x * 0.3 + mask * 0.7) * 1.5;
+            g.beginFill(foamColor, 0.5 + rng() * 0.3);
+            g.drawRect(x, fy, 2 + rng() * 2, 1.5);
+            g.endFill();
+          }
+        } else {
+          for (let y = 0; y < ts; y += 2) {
+            const fx = foam.x1 + Math.sin(y * 0.3 + mask * 0.7) * 1.5;
+            g.beginFill(foamColor, 0.5 + rng() * 0.3);
+            g.drawRect(fx, y, 1.5, 2 + rng() * 2);
+            g.endFill();
+          }
+        }
+
+        // Gentle wave arcs near shore
+        g.lineStyle(1, mix(waveColor1, waveColor2, rng()), 0.25);
+        for (let w = 0; w < 2; w++) {
+          const offset = beachWidth + 2 + w * 5;
+          if (edge.dir === 'N') {
+            g.moveTo(0, offset);
+            for (let x = 0; x <= ts; x += 4) g.lineTo(x, offset + Math.sin(x * 0.25 + w) * 1.5);
+          } else if (edge.dir === 'S') {
+            g.moveTo(0, ts - offset);
+            for (let x = 0; x <= ts; x += 4) g.lineTo(x, ts - offset + Math.sin(x * 0.25 + w) * 1.5);
+          } else if (edge.dir === 'E') {
+            g.moveTo(ts - offset, 0);
+            for (let y = 0; y <= ts; y += 4) g.lineTo(ts - offset + Math.sin(y * 0.25 + w) * 1.5, y);
+          } else {
+            g.moveTo(offset, 0);
+            for (let y = 0; y <= ts; y += 4) g.lineTo(offset + Math.sin(y * 0.25 + w) * 1.5, y);
+          }
+        }
+        g.lineStyle(0);
+      }
+
+      // Corner handling: fill sand in corners where two adjacent edges both have land
+      const corners = [
+        { a: landN, b: landE, x: ts - beachWidth, y: 0 },
+        { a: landE, b: landS, x: ts - beachWidth, y: ts - beachWidth },
+        { a: landS, b: landW, x: 0, y: ts - beachWidth },
+        { a: landN, b: landW, x: 0, y: 0 }
+      ];
+      for (const corner of corners) {
+        if (corner.a && corner.b) {
+          // Fill corner with solid sand
+          g.beginFill(sandColor, 0.85);
+          g.drawRect(corner.x, corner.y, beachWidth, beachWidth);
+          g.endFill();
+          // Sand noise in corner
+          for (let i = 0; i < 10; i++) {
+            g.beginFill(mix(sandDark, sandLight, rng()), 0.5 + rng() * 0.3);
+            g.drawRect(corner.x + Math.floor(rng() * beachWidth), corner.y + Math.floor(rng() * beachWidth), 1, 1);
+            g.endFill();
+          }
+        }
+      }
+
+      // All-land (island lagoon, mask=15): mostly sand with small central water pool
+      if (landCount === 4) {
+        g.beginFill(sandColor, 0.9);
+        g.drawRect(0, 0, ts, ts);
+        g.endFill();
+        for (let i = 0; i < 60; i++) {
+          g.beginFill(mix(sandDark, sandLight, rng()), 0.4 + rng() * 0.4);
+          g.drawRect(Math.floor(rng() * ts), Math.floor(rng() * ts), 1, 1);
+          g.endFill();
+        }
+        // Small central water pool
+        g.beginFill(waterBase, 0.8);
+        g.drawEllipse(ts / 2, ts / 2, 8 + rng() * 4, 6 + rng() * 4);
+        g.endFill();
+        g.beginFill(brighten(waterBase, 15), 0.4);
+        g.drawEllipse(ts / 2, ts / 2, 5, 4);
+        g.endFill();
+        // Foam ring around pool
+        g.lineStyle(1, foamColor, 0.4);
+        g.drawEllipse(ts / 2, ts / 2, 9, 7);
+        g.lineStyle(0);
+      }
+
+      // White wave caps in remaining water areas
+      for (let i = 0; i < 6; i++) {
+        g.beginFill(0xFFFFFF, 0.12 + rng() * 0.15);
+        g.drawRect(Math.floor(rng() * ts), Math.floor(rng() * ts), 2 + Math.floor(rng() * 2), 1);
+        g.endFill();
+      }
+
+      // Render normal coast texture
+      const rt = PIXI.RenderTexture.create({ width: ts, height: ts });
+      renderer.render(g, { renderTexture: rt });
+      this.coastTextures[mask] = rt;
+
+      // Render fog variant
+      const fogRt = PIXI.RenderTexture.create({ width: ts, height: ts });
+      renderer.render(g, { renderTexture: fogRt });
+      const fogOverlay = new PIXI.Graphics();
+      fogOverlay.beginFill(0x000000, 0.6);
+      fogOverlay.drawRect(0, 0, ts, ts);
+      fogOverlay.endFill();
+      renderer.render(fogOverlay, { renderTexture: fogRt, clear: false });
+      this.coastFogTextures[mask] = fogRt;
+
+      g.destroy(true);
+      fogOverlay.destroy(true);
+    }
+  },
+
+  getCardinalNeighborTerrains(r, c) {
+    const h = Game.state.mapHeight;
+    const w = Game.rowWidths[r];
+    // East
+    const eT = Game.mapData[r][(c + 1) % w].terrain;
+    // West
+    const wT = Game.mapData[r][(c - 1 + w) % w].terrain;
+    // North (r+1 in this coordinate system — higher row index)
+    let nT = -1;
+    if (r < h - 1) {
+      const nw = Game.rowWidths[r + 1];
+      const nc = Math.round(c * nw / w) % nw;
+      nT = Game.mapData[r + 1][nc].terrain;
+    }
+    // South (r-1)
+    let sT = -1;
+    if (r > 0) {
+      const sw = Game.rowWidths[r - 1];
+      const sc = Math.round(c * sw / w) % sw;
+      sT = Game.mapData[r - 1][sc].terrain;
+    }
+    return [nT, eT, sT, wT];
   },
 
   setupInteraction(container) {
@@ -1225,7 +1490,15 @@ const Renderer = {
         const terrain = TERRAINS[tile.terrain];
 
         // Terrain tile — use pre-generated textured sprites
-        const tex = fog === 1 ? this.terrainFogTextures[tile.terrain] : this.terrainTextures[tile.terrain];
+        // For coast tiles, select autotile variant based on neighbors
+        let tex;
+        if (tile.terrain === 16 && this.coastTextures.length > 0) {
+          const [nT, eT, sT, wT] = this.getCardinalNeighborTerrains(r, c);
+          const coastMask = (!isWaterTerrain(nT) ? 1 : 0) | (!isWaterTerrain(eT) ? 2 : 0) | (!isWaterTerrain(sT) ? 4 : 0) | (!isWaterTerrain(wT) ? 8 : 0);
+          tex = fog === 1 ? this.coastFogTextures[coastMask] : this.coastTextures[coastMask];
+        } else {
+          tex = fog === 1 ? this.terrainFogTextures[tile.terrain] : this.terrainTextures[tile.terrain];
+        }
         const tileSprite = new PIXI.Sprite(tex);
         tileSprite.position.set(px, py);
         // Subtle per-tile variation via hash of (r, c)
@@ -1239,6 +1512,71 @@ const Renderer = {
         tileSprite.anchor.set(0.5);
         tileSprite.position.set(px + ts / 2, py + ts / 2);
         this.terrainLayer.addChild(tileSprite);
+
+        // Edge blending overlay for terrain transitions
+        if (fog === 2) {
+          const [nT, eT, sT, wT] = this.getCardinalNeighborTerrains(r, c);
+          const myCat = getTerrainCategory(tile.terrain);
+          const myIsWater = isWaterTerrain(tile.terrain);
+          const cardinals = [nT, eT, sT, wT]; // N, E, S, W
+          const edgeGfx = new PIXI.Graphics();
+          let hasEdge = false;
+          const stripWidth = 10;
+          const steps = 5;
+          const stepSize = stripWidth / steps;
+
+          for (let dir = 0; dir < 4; dir++) {
+            const nt = cardinals[dir];
+            if (nt < 0) continue;
+            if (nt === tile.terrain) continue;
+            const nCat = getTerrainCategory(nt);
+            if (nCat === myCat) continue;
+            const nIsWater = isWaterTerrain(nt);
+
+            hasEdge = true;
+
+            if (myIsWater && !nIsWater) {
+              // Water tile bordering land: draw soft blue-to-land gradient + wave arcs
+              const nColor = TERRAINS[nt].color;
+              for (let s = 0; s < steps; s++) {
+                const alpha = 0.2 * (1 - s / steps);
+                edgeGfx.beginFill(nColor, alpha);
+                if (dir === 0) edgeGfx.drawRect(px, py + ts - stripWidth + s * stepSize, ts, stepSize);
+                else if (dir === 1) edgeGfx.drawRect(px + ts - stripWidth + s * stepSize, py, stepSize, ts);
+                else if (dir === 2) edgeGfx.drawRect(px, py + s * stepSize, ts, stepSize);
+                else edgeGfx.drawRect(px + s * stepSize, py, stepSize, ts);
+                edgeGfx.endFill();
+              }
+            } else if (!myIsWater && nIsWater) {
+              // Land tile bordering water: draw wet sand/shore darkening
+              const shoreColor = 0x8B7355;
+              for (let s = 0; s < 3; s++) {
+                const alpha = 0.18 * (1 - s / 3);
+                edgeGfx.beginFill(shoreColor, alpha);
+                if (dir === 0) edgeGfx.drawRect(px, py + ts - 4 + s, ts, 1.5);
+                else if (dir === 1) edgeGfx.drawRect(px + ts - 4 + s, py, 1.5, ts);
+                else if (dir === 2) edgeGfx.drawRect(px, py + s, ts, 1.5);
+                else edgeGfx.drawRect(px + s, py, 1.5, ts);
+                edgeGfx.endFill();
+              }
+            } else {
+              // Land-to-land or water-to-water transition with different categories
+              const nColor = TERRAINS[nt].color;
+              for (let s = 0; s < steps; s++) {
+                const alpha = 0.25 * (1 - s / steps);
+                edgeGfx.beginFill(nColor, alpha);
+                if (dir === 0) edgeGfx.drawRect(px, py + ts - stripWidth + s * stepSize, ts, stepSize);
+                else if (dir === 1) edgeGfx.drawRect(px + ts - stripWidth + s * stepSize, py, stepSize, ts);
+                else if (dir === 2) edgeGfx.drawRect(px, py + s * stepSize, ts, stepSize);
+                else edgeGfx.drawRect(px + s * stepSize, py, stepSize, ts);
+                edgeGfx.endFill();
+              }
+            }
+          }
+
+          if (hasEdge) this.terrainLayer.addChild(edgeGfx);
+          else edgeGfx.destroy(true);
+        }
 
         // Territory border coloring
         if (tile.owner >= 0 && fog === 2) {
