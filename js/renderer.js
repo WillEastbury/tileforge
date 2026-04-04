@@ -1524,59 +1524,57 @@ const Renderer = {
           const cardinals = [nT, eT, sT, wT]; // N, E, S, W
           const edgeGfx = new PIXI.Graphics();
           let hasEdge = false;
-          const stripWidth = 10;
-          const steps = 5;
-          const stepSize = stripWidth / steps;
 
           for (let dir = 0; dir < 4; dir++) {
             const nt = cardinals[dir];
-            if (nt < 0) continue;
-            if (nt === tile.terrain) continue; // blend whenever terrain IDs differ
-            const nCat = getTerrainCategory(nt);
+            if (nt < 0 || nt === tile.terrain) continue;
+            const nColor = TERRAINS[nt].color;
             const nIsWater = isWaterTerrain(nt);
-            const sameCat = (nCat === myCat);
+            const sameCat = (getTerrainCategory(nt) === myCat);
 
             hasEdge = true;
 
-            // Same-category transitions get subtle/thin blending
-            const blendStrip = sameCat ? 6 : stripWidth;
-            const blendSteps = sameCat ? 3 : steps;
-            const blendAlpha = sameCat ? 0.15 : 0.25;
-            const blendStepSize = blendStrip / blendSteps;
+            // Wide gradient blend: 18px for same-cat, 22px for cross-cat (on 48px tile)
+            const stripW = sameCat ? 18 : 22;
+            const steps = 10;
+            const stepSz = stripW / steps;
 
-            if (myIsWater && !nIsWater) {
-              const nColor = TERRAINS[nt].color;
-              for (let s = 0; s < blendSteps; s++) {
-                const alpha = 0.2 * (1 - s / blendSteps);
-                edgeGfx.beginFill(nColor, alpha);
-                if (dir === 0) edgeGfx.drawRect(px, py + ts - blendStrip + s * blendStepSize, tileW, blendStepSize);
-                else if (dir === 1) edgeGfx.drawRect(px + tileW - blendStrip + s * blendStepSize, py, blendStepSize, ts);
-                else if (dir === 2) edgeGfx.drawRect(px, py + s * blendStepSize, tileW, blendStepSize);
-                else edgeGfx.drawRect(px + s * blendStepSize, py, blendStepSize, ts);
-                edgeGfx.endFill();
-              }
-            } else if (!myIsWater && nIsWater) {
-              const shoreColor = 0x8B7355;
-              for (let s = 0; s < 3; s++) {
-                const alpha = 0.18 * (1 - s / 3);
-                edgeGfx.beginFill(shoreColor, alpha);
-                if (dir === 0) edgeGfx.drawRect(px, py + ts - 4 + s, tileW, 1.5);
-                else if (dir === 1) edgeGfx.drawRect(px + tileW - 4 + s, py, 1.5, ts);
-                else if (dir === 2) edgeGfx.drawRect(px, py + s, tileW, 1.5);
-                else edgeGfx.drawRect(px + s, py, 1.5, ts);
-                edgeGfx.endFill();
-              }
-            } else {
-              const nColor = TERRAINS[nt].color;
-              for (let s = 0; s < blendSteps; s++) {
-                const alpha = blendAlpha * (1 - s / blendSteps);
-                edgeGfx.beginFill(nColor, alpha);
-                if (dir === 0) edgeGfx.drawRect(px, py + ts - blendStrip + s * blendStepSize, tileW, blendStepSize);
-                else if (dir === 1) edgeGfx.drawRect(px + tileW - blendStrip + s * blendStepSize, py, blendStepSize, ts);
-                else if (dir === 2) edgeGfx.drawRect(px, py + s * blendStepSize, tileW, blendStepSize);
-                else edgeGfx.drawRect(px + s * blendStepSize, py, blendStepSize, ts);
-                edgeGfx.endFill();
-              }
+            for (let s = 0; s < steps; s++) {
+              // Smooth cubic falloff for natural transition
+              const t = s / steps;
+              const alpha = (sameCat ? 0.35 : 0.5) * (1 - t) * (1 - t);
+              const blendColor = (!myIsWater && nIsWater) ? 0x3388BB : nColor;
+              edgeGfx.beginFill(blendColor, alpha);
+              if (dir === 0) edgeGfx.drawRect(px, py + ts - stripW + s * stepSz, tileW, stepSz);
+              else if (dir === 1) edgeGfx.drawRect(px + tileW - stripW + s * stepSz, py, stepSz, ts);
+              else if (dir === 2) edgeGfx.drawRect(px, py + s * stepSz, tileW, stepSz);
+              else edgeGfx.drawRect(px + s * stepSz, py, stepSz, ts);
+              edgeGfx.endFill();
+            }
+          }
+
+          // Diagonal corner blends for smoother transitions
+          const h = Game.state.mapHeight, w = Game.state.mapWidth;
+          const corners = [
+            {dr: -1, dc: -1, cx: 0, cy: 0},           // NW
+            {dr: -1, dc: 1, cx: tileW, cy: 0},         // NE
+            {dr: 1, dc: -1, cx: 0, cy: ts},             // SW
+            {dr: 1, dc: 1, cx: tileW, cy: ts}            // SE
+          ];
+          for (const cn of corners) {
+            const nr = ((r + cn.dr) % h + h) % h;
+            const nc = ((c + cn.dc) % w + w) % w;
+            const ct = Game.mapData[nr][nc].terrain;
+            if (ct === tile.terrain) continue;
+            hasEdge = true;
+            const cColor = TERRAINS[ct].color;
+            for (let s = 0; s < 5; s++) {
+              const t = s / 5;
+              const rad = 12 * (1 - t);
+              const alpha = 0.2 * (1 - t) * (1 - t);
+              edgeGfx.beginFill(cColor, alpha);
+              edgeGfx.drawCircle(px + cn.cx, py + cn.cy, rad);
+              edgeGfx.endFill();
             }
           }
 

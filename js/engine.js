@@ -1076,6 +1076,9 @@ const Game = {
     this.attackTargets = null;
     this.selectedCity = null;
 
+    // Check for idle cities and units
+    UI.checkIdleNotifications();
+
     Renderer.render();
     UI.updateTopBar();
     UI.updateRightPanel();

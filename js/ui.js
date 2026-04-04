@@ -1074,13 +1074,48 @@ const UI = {
 
   // ========== NOTIFICATIONS ==========
 
-  notify(msg) {
+  notify(msg, onClick) {
     const container = document.getElementById('notifications');
     const el = document.createElement('div');
     el.className = 'notification';
     el.textContent = msg;
+    if (onClick) {
+      el.style.cursor = 'pointer';
+      el.style.borderLeft = '3px solid var(--accent)';
+      el.addEventListener('click', () => { el.remove(); onClick(); });
+    }
     container.appendChild(el);
-    setTimeout(() => el.remove(), 3000);
+    setTimeout(() => el.remove(), 5000);
+  },
+
+  checkIdleNotifications() {
+    if (!Game.state) return;
+    const p = Game.state.players[0];
+    if (!p) return;
+
+    // Idle cities (no build queue)
+    for (const city of p.cities) {
+      if (!city.buildQueue) {
+        this.notify(`🏛 ${city.name} is idle — nothing in production!`, () => {
+          Renderer.centerOn(city.r, city.c);
+          this.showCityPanel(city);
+        });
+      }
+    }
+
+    // Idle civilian/settler units (full movement, haven't acted)
+    for (const unit of p.units) {
+      const uType = Game.getUnitType(unit);
+      if ((uType.type === 'civilian' || uType.type === 'settler') && !unit.hasActed) {
+        this.notify(`⚠️ Idle ${uType.name} at (${unit.r},${unit.c}) — put them to work!`, () => {
+          Renderer.centerOn(unit.r, unit.c);
+          Game.selectedUnit = unit;
+          Game.movementRange = Game.getMovementRange(unit);
+          Renderer.render();
+          this.updateRightPanel();
+        });
+      }
+    }
   },
 
   showVictory(msg) {
