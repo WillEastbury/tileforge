@@ -1355,10 +1355,10 @@ const Renderer = {
     if (row < 0 || row >= mapHeight) return;
 
     const rw = Game.rowWidths[row];
-    const rowPixelWidth = rw * ts;
+    const tileW = totalMapWidth / rw;
 
-    let colX = ((worldX % rowPixelWidth) + rowPixelWidth) % rowPixelWidth;
-    const col = Math.floor(colX / ts);
+    let colX = ((worldX % totalMapWidth) + totalMapWidth) % totalMapWidth;
+    const col = Math.floor(colX / tileW);
     if (col < 0 || col >= rw) return;
 
     const tile = Game.getTile(row, col);
@@ -1485,7 +1485,9 @@ const Renderer = {
       const rw = Game.rowWidths[r];
       for (let c = 0; c < rw; c++) {
         const tile = Game.mapData[r][c];
-        const basePx = c * ts;
+        // Scale tile width so every row fills totalMapWidth
+        const tileW = totalMapWidth / rw;
+        const basePx = c * tileW;
 
         // Draw tile at normal position and wrapped positions for seamless scroll (both axes)
         for (const wrapX of [0, -totalMapWidth, totalMapWidth]) {
@@ -1494,7 +1496,7 @@ const Renderer = {
           const py = r * ts + wrapY;
 
           // Check if visible on screen (approximate)
-          if (px + ts < viewLeft - ts * 2 || px > viewRight + ts * 2) continue;
+          if (px + tileW < viewLeft - ts * 2 || px > viewRight + ts * 2) continue;
           if (py + ts < viewTop - ts * 2 || py > viewBottom + ts * 2) continue;
 
         const fog = tile.fogState ? (tile.fogState[0] || 0) : 0;
@@ -1514,6 +1516,8 @@ const Renderer = {
         }
         const tileSprite = new PIXI.Sprite(tex);
         tileSprite.position.set(px, py);
+        tileSprite.width = tileW;
+        tileSprite.height = ts;
         // Subtle per-tile variation via hash of (r, c)
         const hash = ((r * 7919 + c * 6271) & 0xFFFF) / 65535;
         const tintAmt = hash * 0.08;
@@ -1521,9 +1525,6 @@ const Renderer = {
         const tG = Math.round(255 + (((terrain.color >> 8) & 0xFF) - 255) * tintAmt);
         const tB = Math.round(255 + ((terrain.color & 0xFF) - 255) * tintAmt);
         tileSprite.tint = (tR << 16) | (tG << 8) | tB;
-        tileSprite.rotation = (hash - 0.5) * 0.06;
-        tileSprite.anchor.set(0.5);
-        tileSprite.position.set(px + ts / 2, py + ts / 2);
         this.terrainLayer.addChild(tileSprite);
 
         // Edge blending overlay for terrain transitions
@@ -1549,38 +1550,35 @@ const Renderer = {
             hasEdge = true;
 
             if (myIsWater && !nIsWater) {
-              // Water tile bordering land: draw soft blue-to-land gradient + wave arcs
               const nColor = TERRAINS[nt].color;
               for (let s = 0; s < steps; s++) {
                 const alpha = 0.2 * (1 - s / steps);
                 edgeGfx.beginFill(nColor, alpha);
-                if (dir === 0) edgeGfx.drawRect(px, py + ts - stripWidth + s * stepSize, ts, stepSize);
-                else if (dir === 1) edgeGfx.drawRect(px + ts - stripWidth + s * stepSize, py, stepSize, ts);
-                else if (dir === 2) edgeGfx.drawRect(px, py + s * stepSize, ts, stepSize);
+                if (dir === 0) edgeGfx.drawRect(px, py + ts - stripWidth + s * stepSize, tileW, stepSize);
+                else if (dir === 1) edgeGfx.drawRect(px + tileW - stripWidth + s * stepSize, py, stepSize, ts);
+                else if (dir === 2) edgeGfx.drawRect(px, py + s * stepSize, tileW, stepSize);
                 else edgeGfx.drawRect(px + s * stepSize, py, stepSize, ts);
                 edgeGfx.endFill();
               }
             } else if (!myIsWater && nIsWater) {
-              // Land tile bordering water: draw wet sand/shore darkening
               const shoreColor = 0x8B7355;
               for (let s = 0; s < 3; s++) {
                 const alpha = 0.18 * (1 - s / 3);
                 edgeGfx.beginFill(shoreColor, alpha);
-                if (dir === 0) edgeGfx.drawRect(px, py + ts - 4 + s, ts, 1.5);
-                else if (dir === 1) edgeGfx.drawRect(px + ts - 4 + s, py, 1.5, ts);
-                else if (dir === 2) edgeGfx.drawRect(px, py + s, ts, 1.5);
+                if (dir === 0) edgeGfx.drawRect(px, py + ts - 4 + s, tileW, 1.5);
+                else if (dir === 1) edgeGfx.drawRect(px + tileW - 4 + s, py, 1.5, ts);
+                else if (dir === 2) edgeGfx.drawRect(px, py + s, tileW, 1.5);
                 else edgeGfx.drawRect(px + s, py, 1.5, ts);
                 edgeGfx.endFill();
               }
             } else {
-              // Land-to-land or water-to-water transition with different categories
               const nColor = TERRAINS[nt].color;
               for (let s = 0; s < steps; s++) {
                 const alpha = 0.25 * (1 - s / steps);
                 edgeGfx.beginFill(nColor, alpha);
-                if (dir === 0) edgeGfx.drawRect(px, py + ts - stripWidth + s * stepSize, ts, stepSize);
-                else if (dir === 1) edgeGfx.drawRect(px + ts - stripWidth + s * stepSize, py, stepSize, ts);
-                else if (dir === 2) edgeGfx.drawRect(px, py + s * stepSize, ts, stepSize);
+                if (dir === 0) edgeGfx.drawRect(px, py + ts - stripWidth + s * stepSize, tileW, stepSize);
+                else if (dir === 1) edgeGfx.drawRect(px + tileW - stripWidth + s * stepSize, py, stepSize, ts);
+                else if (dir === 2) edgeGfx.drawRect(px, py + s * stepSize, tileW, stepSize);
                 else edgeGfx.drawRect(px + s * stepSize, py, stepSize, ts);
                 edgeGfx.endFill();
               }
@@ -1596,7 +1594,7 @@ const Renderer = {
           const ownerColor = parseInt(CIV_COLORS[tile.owner].replace('#',''), 16);
           const borderGfx = new PIXI.Graphics();
           borderGfx.beginFill(ownerColor, 0.12);
-          borderGfx.drawRect(px, py, ts - 1, ts - 1);
+          borderGfx.drawRect(px, py, tileW - 1, ts - 1);
           borderGfx.endFill();
           this.borderLayer.addChild(borderGfx);
         }
@@ -1622,10 +1620,10 @@ const Renderer = {
             // City background
             const cityBg = new PIXI.Graphics();
             cityBg.beginFill(ownerColor, 0.6);
-            cityBg.drawRoundedRect(px + 2, py + 2, ts - 5, ts - 5, 4);
+            cityBg.drawRoundedRect(px + 2, py + 2, tileW - 5, ts - 5, 4);
             cityBg.endFill();
             cityBg.lineStyle(2, ownerColor);
-            cityBg.drawRoundedRect(px + 2, py + 2, ts - 5, ts - 5, 4);
+            cityBg.drawRoundedRect(px + 2, py + 2, tileW - 5, ts - 5, 4);
             this.cityLayer.addChild(cityBg);
 
             // City population number
@@ -1633,7 +1631,7 @@ const Renderer = {
               fontSize: 12, fill: 0xFFFFFF, fontWeight: 'bold'
             });
             popText.anchor.set(0.5);
-            popText.position.set(px + ts / 2, py + ts / 2);
+            popText.position.set(px + tileW / 2, py + ts / 2);
             this.cityLayer.addChild(popText);
 
             // City name label above
@@ -1642,7 +1640,7 @@ const Renderer = {
               stroke: 0x000000, strokeThickness: 2
             });
             nameText.anchor.set(0.5, 1);
-            nameText.position.set(px + ts / 2, py - 1);
+            nameText.position.set(px + tileW / 2, py - 1);
             this.cityLayer.addChild(nameText);
 
             // HP bar if damaged
@@ -1650,10 +1648,10 @@ const Renderer = {
               const hpPct = city.hp / city.maxHp;
               const hpBar = new PIXI.Graphics();
               hpBar.beginFill(0x333333);
-              hpBar.drawRect(px + 2, py + ts - 4, ts - 5, 3);
+              hpBar.drawRect(px + 2, py + ts - 4, tileW - 5, 3);
               hpBar.endFill();
               hpBar.beginFill(hpPct > 0.5 ? 0x4caf50 : hpPct > 0.25 ? 0xff9800 : 0xe94560);
-              hpBar.drawRect(px + 2, py + ts - 4, (ts - 5) * hpPct, 3);
+              hpBar.drawRect(px + 2, py + ts - 4, (tileW - 5) * hpPct, 3);
               hpBar.endFill();
               this.cityLayer.addChild(hpBar);
             }
@@ -1677,22 +1675,22 @@ const Renderer = {
           if (uType.domain === 'sea') {
             // Naval: diamond shape
             unitGfx.beginFill(ownerColor, 0.85);
-            unitGfx.moveTo(px + ts/2, py + 4);
-            unitGfx.lineTo(px + ts - 4, py + ts/2);
-            unitGfx.lineTo(px + ts/2, py + ts - 4);
+            unitGfx.moveTo(px + tileW/2, py + 4);
+            unitGfx.lineTo(px + tileW - 4, py + ts/2);
+            unitGfx.lineTo(px + tileW/2, py + ts - 4);
             unitGfx.lineTo(px + 4, py + ts/2);
             unitGfx.closePath();
             unitGfx.endFill();
           } else if (uType.type === 'civilian' || uType.type === 'settler') {
             // Civilian: circle
             unitGfx.beginFill(ownerColor, 0.85);
-            unitGfx.drawCircle(px + ts/2, py + ts/2, ts/3);
+            unitGfx.drawCircle(px + tileW/2, py + ts/2, ts/3);
             unitGfx.endFill();
           } else {
             // Military: square with border
             unitGfx.lineStyle(2, ownerColor);
             unitGfx.beginFill(ownerColor, 0.7);
-            unitGfx.drawRoundedRect(px + 5, py + 5, ts - 11, ts - 11, 3);
+            unitGfx.drawRoundedRect(px + 5, py + 5, tileW - 11, ts - 11, 3);
             unitGfx.endFill();
           }
           this.unitLayer.addChild(unitGfx);
@@ -1703,7 +1701,7 @@ const Renderer = {
             fontSize: 11, fill: 0xFFFFFF
           });
           unitText.anchor.set(0.5);
-          unitText.position.set(px + ts/2, py + ts/2);
+          unitText.position.set(px + tileW/2, py + ts/2);
           this.unitLayer.addChild(unitText);
 
           // HP bar if damaged
@@ -1711,10 +1709,10 @@ const Renderer = {
             const hpPct = unit.hp / 100;
             const hpBar = new PIXI.Graphics();
             hpBar.beginFill(0x333333);
-            hpBar.drawRect(px + 4, py + ts - 6, ts - 9, 3);
+            hpBar.drawRect(px + 4, py + ts - 6, tileW - 9, 3);
             hpBar.endFill();
             hpBar.beginFill(hpPct > 0.5 ? 0x4caf50 : hpPct > 0.25 ? 0xff9800 : 0xe94560);
-            hpBar.drawRect(px + 4, py + ts - 6, (ts - 9) * hpPct, 3);
+            hpBar.drawRect(px + 4, py + ts - 6, (tileW - 9) * hpPct, 3);
             hpBar.endFill();
             this.unitLayer.addChild(hpBar);
           }
@@ -1722,7 +1720,7 @@ const Renderer = {
           // Fortified indicator
           if (unit.fortified) {
             const fort = new PIXI.Text('🛡', {fontSize: 8});
-            fort.position.set(px + ts - 12, py + 1);
+            fort.position.set(px + tileW - 12, py + 1);
             this.unitLayer.addChild(fort);
           }
           } // end else (not animating unit)
@@ -1736,13 +1734,15 @@ const Renderer = {
     if (Game.movementRange) {
       for (const [key, mvLeft] of Game.movementRange) {
         const [r, c] = key.split(',').map(Number);
-        const basePx = c * ts;
+        const rw = Game.rowWidths[r];
+        const tileW = totalMapWidth / rw;
+        const basePx = c * tileW;
 
         for (const wrapX of [0, -totalMapWidth, totalMapWidth]) {
           for (const wrapY of [0, -totalMapHeight, totalMapHeight]) {
           const px = basePx + wrapX;
           const py = r * ts + wrapY;
-          if (px + ts < viewLeft - ts * 2 || px > viewRight + ts * 2) continue;
+          if (px + tileW < viewLeft - ts * 2 || px > viewRight + ts * 2) continue;
           if (py + ts < viewTop - ts * 2 || py > viewBottom + ts * 2) continue;
           const hl = new PIXI.Graphics();
           if (mvLeft >= 0) {
@@ -1752,7 +1752,7 @@ const Renderer = {
             hl.beginFill(0xe94560, 0.3);
             hl.lineStyle(1, 0xe94560, 0.7);
           }
-          hl.drawRect(px, py, ts - 1, ts - 1);
+          hl.drawRect(px, py, tileW - 1, ts - 1);
           hl.endFill();
           this.highlightLayer.addChild(hl);
           }
@@ -1763,12 +1763,14 @@ const Renderer = {
     // Selected unit highlight
     if (Game.selectedUnit) {
       const u = Game.selectedUnit;
-      const px = u.c * ts;
+      const rw = Game.rowWidths[u.r];
+      const tileW = totalMapWidth / rw;
+      const px = u.c * tileW;
       const py = u.r * ts;
 
       const sel = new PIXI.Graphics();
       sel.lineStyle(2, 0xf0c040);
-      sel.drawRect(px - 1, py - 1, ts + 1, ts + 1);
+      sel.drawRect(px - 1, py - 1, tileW + 1, ts + 1);
       this.highlightLayer.addChild(sel);
     }
   },
@@ -1777,8 +1779,11 @@ const Renderer = {
 
   getTilePixelCenter(r, c) {
     const ts = this.tileSize;
+    const rw = Game.rowWidths[r];
+    const totalMapWidth = Game.state.mapWidth * ts;
+    const tileW = totalMapWidth / rw;
     return {
-      x: c * ts + ts / 2,
+      x: c * tileW + tileW / 2,
       y: r * ts + ts / 2
     };
   },
@@ -1993,8 +1998,11 @@ const Renderer = {
   // Center camera on a position
   centerOn(r, c) {
     const ts = this.tileSize;
+    const rw = Game.rowWidths[r];
+    const totalMapWidth = Game.state.mapWidth * ts;
+    const tileW = totalMapWidth / rw;
 
-    this.camera.x = c * ts + ts / 2;
+    this.camera.x = c * tileW + tileW / 2;
     this.camera.y = r * ts + ts / 2;
     this.render();
     this.updateMinimap();
