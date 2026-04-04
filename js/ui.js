@@ -133,7 +133,7 @@ const UI = {
       const p = Game.state.players[unit.owner];
       panel.innerHTML = `
         <div class="unit-card">
-          <h4>${Renderer.getUnitIcon(uType)} ${uType.name}</h4>
+          <h4>${Renderer.getUnitIcon(uType)} ${uType.name} <span class="ency-ref" onclick="UI.showEncyclopedia('units','${uType.id}')" title="Tileopedia">📖</span></h4>
           <div class="stats">
             <div>Owner: ${p.name}</div>
             <div>Era: ${ERA_NAMES[uType.era]}</div>
@@ -331,10 +331,10 @@ const UI = {
       for (const bId of city.buildings) {
         if (bId.startsWith('wonder_')) {
           const w = WONDERS.find(w => w.id === bId.replace('wonder_', ''));
-          html += `<span style="display:inline-block;background:var(--bg-card);padding:2px 6px;border-radius:3px;margin:2px;font-size:11px;border:1px solid var(--gold);color:var(--gold)">${w ? w.name : bId}</span>`;
+          html += `<span onclick="UI.showEncyclopedia('wonders','${bId.replace('wonder_','')}')" style="display:inline-block;background:var(--bg-card);padding:2px 6px;border-radius:3px;margin:2px;font-size:11px;border:1px solid var(--gold);color:var(--gold);cursor:pointer">${w ? w.name : bId}</span>`;
         } else {
           const b = BUILDINGS.find(b => b.id === bId);
-          html += `<span style="display:inline-block;background:var(--bg-card);padding:2px 6px;border-radius:3px;margin:2px;font-size:11px">${b ? b.name : bId}</span>`;
+          html += `<span onclick="UI.showEncyclopedia('buildings','${bId}')" style="display:inline-block;background:var(--bg-card);padding:2px 6px;border-radius:3px;margin:2px;font-size:11px;cursor:pointer">${b ? b.name : bId}</span>`;
         }
       }
       html += '</div>';
@@ -456,6 +456,534 @@ const UI = {
       sci += Game.getCityYields(city).sci;
     }
     return sci;
+  },
+
+  // ========== ENCYCLOPEDIA ==========
+
+  encyclopediaCategory: 'units',
+  encyclopediaItem: null,
+
+  showEncyclopedia(category, itemId) {
+    document.getElementById('encyclopedia-panel').classList.remove('hidden');
+    this.encyclopediaCategory = category || 'units';
+    this.renderEncyclopediaSidebar();
+    this.renderEncyclopediaList(this.encyclopediaCategory);
+    if (itemId) {
+      this.showEncyclopediaDetail(this.encyclopediaCategory, itemId);
+    } else {
+      this.showFirstItem(this.encyclopediaCategory);
+    }
+  },
+
+  closeEncyclopedia() {
+    document.getElementById('encyclopedia-panel').classList.add('hidden');
+  },
+
+  renderEncyclopediaSidebar() {
+    const sidebar = document.getElementById('ency-sidebar');
+    const categories = [
+      {id:'terrain', label:'🌍 Terrain'},
+      {id:'resources', label:'💎 Resources'},
+      {id:'composites', label:'🔧 Composites'},
+      {id:'techs', label:'🔬 Technologies'},
+      {id:'buildings', label:'🏛 Buildings'},
+      {id:'wonders', label:'⭐ Wonders'},
+      {id:'units', label:'⚔️ Units'},
+      {id:'concepts', label:'📘 Concepts'}
+    ];
+    sidebar.innerHTML = categories.map(c =>
+      `<button class="${c.id === this.encyclopediaCategory ? 'active' : ''}" onclick="UI.selectEncyCategory('${c.id}')">${c.label}</button>`
+    ).join('');
+  },
+
+  selectEncyCategory(category) {
+    this.encyclopediaCategory = category;
+    this.renderEncyclopediaSidebar();
+    this.renderEncyclopediaList(category);
+    this.showFirstItem(category);
+  },
+
+  showFirstItem(category) {
+    const items = this.getEncyItems(category);
+    if (items.length > 0) {
+      this.showEncyclopediaDetail(category, items[0].id);
+    } else {
+      document.getElementById('ency-detail').innerHTML = '<p style="color:#888">Select an item</p>';
+    }
+  },
+
+  getEncyItems(category) {
+    switch (category) {
+      case 'terrain': return TERRAINS.map(t => ({id: t.id, name: t.name, sub: t.zone, icon: t.emoji}));
+      case 'resources': return RESOURCES.map(r => ({id: r.id, name: r.name, sub: r.type, icon: ''}));
+      case 'composites': return COMPOSITES.map(c => ({id: c.id, name: c.name, sub: ERA_NAMES[c.era], icon: ''}));
+      case 'techs': return TECHS.map(t => ({id: t.id, name: t.name, sub: ERA_NAMES[t.era], icon: ''}));
+      case 'buildings': return BUILDINGS.map(b => ({id: b.id, name: b.name, sub: ERA_NAMES[b.era], icon: ''}));
+      case 'wonders': return WONDERS.map(w => ({id: w.id, name: w.name, sub: ERA_NAMES[w.era], icon: ''}));
+      case 'units': return UNIT_TYPES.map(u => ({id: u.id, name: u.name, sub: ERA_NAMES[u.era], icon: ''}));
+      case 'concepts': return [
+        {id:'eras', name:'Eras', sub:'Game Mechanics', icon:'📅'},
+        {id:'city_tiers', name:'City Tiers', sub:'Game Mechanics', icon:'🏘️'},
+        {id:'combat', name:'Combat', sub:'Game Mechanics', icon:'⚔️'},
+        {id:'happiness', name:'Happiness', sub:'Game Mechanics', icon:'😊'},
+        {id:'victory', name:'Victory Conditions', sub:'Game Mechanics', icon:'🏆'},
+        {id:'difficulty', name:'Difficulty Levels', sub:'Game Mechanics', icon:'🎚️'},
+        {id:'fog_of_war', name:'Fog of War', sub:'Game Mechanics', icon:'🌫️'},
+        {id:'legacy', name:'Legacy & History', sub:'Game Mechanics', icon:'📜'}
+      ];
+      default: return [];
+    }
+  },
+
+  renderEncyclopediaList(category) {
+    const list = document.getElementById('ency-list');
+    const items = this.getEncyItems(category);
+    list.innerHTML = items.map(item =>
+      `<div class="ency-item" id="ency-item-${item.id}" onclick="UI.showEncyclopediaDetail('${category}','${item.id}')">${item.icon ? item.icon + ' ' : ''}${item.name}<br><small style="color:#888">${item.sub}</small></div>`
+    ).join('');
+  },
+
+  showEncyclopediaDetail(category, id) {
+    this.encyclopediaItem = id;
+    // Highlight active item
+    document.querySelectorAll('#ency-list .ency-item').forEach(el => el.classList.remove('active'));
+    const activeEl = document.getElementById('ency-item-' + id);
+    if (activeEl) { activeEl.classList.add('active'); activeEl.scrollIntoView({block:'nearest'}); }
+
+    const detail = document.getElementById('ency-detail');
+    switch (category) {
+      case 'terrain': detail.innerHTML = this.renderTerrainDetail(id); break;
+      case 'resources': detail.innerHTML = this.renderResourceDetail(id); break;
+      case 'composites': detail.innerHTML = this.renderCompositeDetail(id); break;
+      case 'techs': detail.innerHTML = this.renderTechDetail(id); break;
+      case 'buildings': detail.innerHTML = this.renderBuildingDetail(id); break;
+      case 'wonders': detail.innerHTML = this.renderWonderDetail(id); break;
+      case 'units': detail.innerHTML = this.renderUnitDetail(id); break;
+      case 'concepts': detail.innerHTML = this.renderConceptDetail(id); break;
+      default: detail.innerHTML = '';
+    }
+  },
+
+  encyLink(category, id, label) {
+    return `<span class="ency-link" onclick="UI.showEncyclopedia('${category}','${id}')">${label}</span>`;
+  },
+
+  statBox(label, value) {
+    return `<div class="stat-box"><div class="stat-label">${label}</div><div class="stat-value">${value}</div></div>`;
+  },
+
+  renderTerrainDetail(id) {
+    const t = TERRAINS.find(x => x.id === id || x.id === +id);
+    if (!t) return '';
+    const resources = RESOURCES.filter(r => r.terrains && r.terrains.includes(t.id));
+    let html = `<h2>${t.emoji} ${t.name}</h2>`;
+    html += `<span class="badge badge-era">${t.zone}</span>`;
+    if (t.water) html += ` <span class="badge badge-domain">Water</span>`;
+    if (t.mv >= 99) html += ` <span class="badge badge-type">Impassable</span>`;
+    if (t.desc) html += `<div class="flavor">${t.desc}</div>`;
+    html += `<div class="section-title">Statistics</div>`;
+    html += `<div class="stat-grid">`;
+    html += this.statBox('Movement Cost', t.mv >= 99 ? '∞' : t.mv);
+    html += this.statBox('🌾 Food', t.food);
+    html += this.statBox('⚙️ Production', t.prod);
+    html += this.statBox('💰 Gold', t.gold);
+    html += this.statBox('🛡️ Defense', (t.def >= 0 ? '+' : '') + t.def + '%');
+    html += `</div>`;
+    if (resources.length > 0) {
+      html += `<div class="section-title">Resources Found Here</div>`;
+      html += resources.map(r => this.encyLink('resources', r.id, r.name)).join(', ');
+    }
+    return html;
+  },
+
+  renderResourceDetail(id) {
+    const r = RESOURCES.find(x => x.id === id);
+    if (!r) return '';
+    const terrainNames = (r.terrains || []).map(tid => {
+      const t = TERRAINS.find(x => x.id === tid);
+      return t ? this.encyLink('terrain', t.id, t.emoji + ' ' + t.name) : '';
+    });
+    let html = `<h2>${r.name}</h2>`;
+    html += `<span class="badge badge-type">${r.type}</span>`;
+    if (r.revealTech) {
+      const tech = TECHS.find(t => t.id === r.revealTech);
+      html += ` <span class="badge badge-era">Revealed by: ${tech ? tech.name : r.revealTech}</span>`;
+    }
+    if (r.desc) html += `<div class="flavor">${r.desc}</div>`;
+    html += `<div class="section-title">Yields</div>`;
+    html += `<div class="stat-grid">`;
+    if (r.food) html += this.statBox('🌾 Food', '+' + r.food);
+    if (r.prod) html += this.statBox('⚙️ Production', '+' + r.prod);
+    if (r.gold) html += this.statBox('💰 Gold', '+' + r.gold);
+    if (r.sci) html += this.statBox('🔬 Science', '+' + r.sci);
+    if (r.cul) html += this.statBox('🎭 Culture', '+' + r.cul);
+    html += `</div>`;
+    if (terrainNames.length > 0) {
+      html += `<div class="section-title">Found On</div>`;
+      html += terrainNames.join(', ');
+    }
+    if (r.revealTech) {
+      html += `<div class="section-title">Reveal Technology</div>`;
+      const tech = TECHS.find(t => t.id === r.revealTech);
+      html += tech ? this.encyLink('techs', tech.id, '🔬 ' + tech.name) : r.revealTech;
+    }
+    return html;
+  },
+
+  renderCompositeDetail(id) {
+    const c = COMPOSITES.find(x => x.id === id);
+    if (!c) return '';
+    let html = `<h2>🔧 ${c.name}</h2>`;
+    html += `<span class="badge badge-era">${ERA_NAMES[c.era]}</span>`;
+    html += `<div class="section-title">Recipe</div>`;
+    html += `<div class="stat-grid">`;
+    for (const ing of c.ingredients) {
+      const res = RESOURCES.find(r => r.id === ing);
+      const comp = COMPOSITES.find(x => x.id === ing);
+      const name = res ? res.name : (comp ? comp.name : ing);
+      const cat = res ? 'resources' : 'composites';
+      html += `<div class="stat-box"><div class="stat-label">Ingredient</div><div class="stat-value">${this.encyLink(cat, ing, name)}</div></div>`;
+    }
+    html += `</div>`;
+    html += `<div class="section-title">Unlocking Tech</div>`;
+    const tech = TECHS.find(t => t.id === c.tech);
+    html += tech ? this.encyLink('techs', tech.id, '🔬 ' + tech.name) : c.tech;
+    html += `<div class="section-title">Effects</div>`;
+    html += `<p style="color:#8f8">${c.desc}</p>`;
+    return html;
+  },
+
+  renderTechDetail(id) {
+    const t = TECHS.find(x => x.id === id);
+    if (!t) return '';
+    let html = `<h2>🔬 ${t.name}</h2>`;
+    html += `<span class="badge badge-era">${ERA_ICONS[t.era]} ${ERA_NAMES[t.era]}</span>`;
+    if (t.desc) html += `<div class="flavor">${t.desc}</div>`;
+    html += `<div class="section-title">Statistics</div>`;
+    html += `<div class="stat-grid">`;
+    html += this.statBox('🔬 Research Cost', t.cost);
+    html += this.statBox('Era', ERA_NAMES[t.era]);
+    html += `</div>`;
+    if (t.prereqs && t.prereqs.length > 0) {
+      html += `<div class="section-title">Prerequisites</div>`;
+      html += t.prereqs.map(pid => {
+        const pt = TECHS.find(x => x.id === pid);
+        return pt ? this.encyLink('techs', pt.id, '🔬 ' + pt.name) : pid;
+      }).join(', ');
+    }
+    // What it unlocks
+    const unlockedBuildings = BUILDINGS.filter(b => b.req === t.id);
+    const unlockedWonders = WONDERS.filter(w => w.req === t.id);
+    const unlockedUnits = UNIT_TYPES.filter(u => u.req === t.id);
+    const revealedRes = RESOURCES.filter(r => r.revealTech === t.id);
+    if (unlockedBuildings.length || unlockedWonders.length || unlockedUnits.length || revealedRes.length) {
+      html += `<div class="section-title">Unlocks</div><ul class="effects-list">`;
+      for (const b of unlockedBuildings) html += `<li>🏛 ${this.encyLink('buildings', b.id, b.name)}</li>`;
+      for (const w of unlockedWonders) html += `<li>⭐ ${this.encyLink('wonders', w.id, w.name)}</li>`;
+      for (const u of unlockedUnits) html += `<li>⚔️ ${this.encyLink('units', u.id, u.name)}</li>`;
+      for (const r of revealedRes) html += `<li>💎 Reveals ${this.encyLink('resources', r.id, r.name)}</li>`;
+      html += `</ul>`;
+    }
+    return html;
+  },
+
+  renderBuildingDetail(id) {
+    const b = BUILDINGS.find(x => x.id === id);
+    if (!b) return '';
+    let html = `<h2>🏛 ${b.name}</h2>`;
+    html += `<span class="badge badge-era">${ERA_ICONS[b.era]} ${ERA_NAMES[b.era]}</span>`;
+    if (b.flavor) html += `<div class="flavor">${b.flavor}</div>`;
+    html += `<div class="section-title">Statistics</div>`;
+    html += `<div class="stat-grid">`;
+    html += this.statBox('⚙️ Cost', b.cost);
+    const tech = TECHS.find(t => t.id === b.req);
+    html += this.statBox('🔬 Requires', tech ? tech.name : b.req);
+    html += `</div>`;
+    // Yields
+    const yields = [];
+    if (b.food) yields.push('🌾 +' + b.food + ' Food');
+    if (b.prod) yields.push('⚙️ +' + b.prod + ' Prod');
+    if (b.gold) yields.push('💰 +' + b.gold + ' Gold');
+    if (b.sci) yields.push('🔬 +' + b.sci + ' Science');
+    if (b.cul) yields.push('🎭 +' + b.cul + ' Culture');
+    if (b.hap) yields.push('😊 ' + (b.hap > 0 ? '+' : '') + b.hap + ' Happy');
+    if (yields.length > 0) {
+      html += `<div class="section-title">Yields</div><div class="stat-grid">`;
+      for (const y of yields) html += `<div class="stat-box"><div class="stat-value">${y}</div></div>`;
+      html += `</div>`;
+    }
+    // Special effects
+    const effects = [];
+    if (b.growthMod) effects.push(`+${Math.round(b.growthMod*100)}% city growth rate`);
+    if (b.goldMod) effects.push(`+${Math.round(b.goldMod*100)}% gold income`);
+    if (b.sciMod) effects.push(`+${Math.round(b.sciMod*100)}% science output`);
+    if (b.prodMod) effects.push(`+${Math.round(b.prodMod*100)}% production output`);
+    if (b.culMod) effects.push(`+${Math.round(b.culMod*100)}% culture output`);
+    if (b.histMod) effects.push(`+${Math.round(b.histMod*100)}% history generation`);
+    if (b.allMod) effects.push(`+${Math.round(b.allMod*100)}% all yields`);
+    if (b.defense) effects.push(`+${b.defense}% city defense strength`);
+    if (b.xpBonus) effects.push(`+${b.xpBonus} XP for new units`);
+    if (b.unitProdMod) effects.push(`+${Math.round(b.unitProdMod*100)}% unit production speed`);
+    if (b.needsCoast) effects.push('Requires coastal city');
+    if (b.cityRanged) effects.push('City gains ranged attack');
+    if (b.airSlots) effects.push(`Bases ${b.airSlots} air units`);
+    if (b.antiAir) effects.push('Intercepts enemy aircraft (75%)');
+    if (effects.length > 0) {
+      html += `<div class="section-title">Special Effects</div><ul class="effects-list">`;
+      for (const e of effects) html += `<li>${e}</li>`;
+      html += `</ul>`;
+    }
+    if (tech) {
+      html += `<div class="section-title">Required Technology</div>`;
+      html += this.encyLink('techs', tech.id, '🔬 ' + tech.name);
+    }
+    return html;
+  },
+
+  renderWonderDetail(id) {
+    const w = WONDERS.find(x => x.id === id);
+    if (!w) return '';
+    let html = `<h2>⭐ ${w.name}</h2>`;
+    html += `<span class="badge badge-era">${ERA_ICONS[w.era]} ${ERA_NAMES[w.era]}</span>`;
+    if (w.flavor) html += `<div class="flavor">${w.flavor}</div>`;
+    html += `<div class="section-title">Statistics</div>`;
+    html += `<div class="stat-grid">`;
+    html += this.statBox('⚙️ Cost', w.cost);
+    const tech = TECHS.find(t => t.id === w.req);
+    html += this.statBox('🔬 Requires', tech ? tech.name : w.req);
+    html += `</div>`;
+    // Effects
+    const effects = [];
+    if (w.empFood) effects.push(`+${w.empFood} Food in all cities`);
+    if (w.empProd) effects.push(`+${w.empProd} Production in all cities`);
+    if (w.empGold) effects.push(`+${w.empGold} Gold in all cities`);
+    if (w.empScience) effects.push(`+${w.empScience} Science in all cities`);
+    if (w.empCulture) effects.push(`+${w.empCulture} Culture in all cities`);
+    if (w.empHappy) effects.push(`+${w.empHappy} Happiness empire-wide`);
+    if (w.empDef) effects.push(`+${w.empDef} Defense in all cities`);
+    if (w.food) effects.push(`+${w.food} Food in this city`);
+    if (w.cul) effects.push(`+${w.cul} Culture in this city`);
+    if (w.sci) effects.push(`+${w.sci} Science in this city`);
+    if (w.freeTech) effects.push('Grants 1 free technology');
+    if (w.goldenAge) effects.push('Triggers a Golden Age');
+    if (w.nukes) effects.push('Enables nuclear weapons');
+    if (w.diplomatic) effects.push('Opens diplomatic victory path');
+    if (w.revealMap) effects.push('Reveals entire map');
+    if (w.sciBoost) effects.push('+100% Science for 20 turns');
+    if (w.sciMod) effects.push(`+${Math.round(w.sciMod*100)}% Science output`);
+    if (w.culMod) effects.push(`+${Math.round(w.culMod*100)}% Culture output`);
+    if (w.allMod) effects.push(`+${Math.round(w.allMod*100)}% all yields`);
+    if (w.histMod) effects.push(`+${Math.round(w.histMod*100)}% History generation`);
+    if (w.techDiscount) effects.push(`-${Math.round(w.techDiscount*100)}% technology costs`);
+    if (w.rushDiscount) effects.push(`-${Math.round(w.rushDiscount*100)}% rush buy costs`);
+    if (w.shuttleDiscount) effects.push(`-${Math.round(w.shuttleDiscount*100)}% shuttle production cost`);
+    if (w.needsCoast) effects.push('Requires coastal city');
+    if (effects.length > 0) {
+      html += `<div class="section-title">Effects</div><ul class="effects-list">`;
+      for (const e of effects) html += `<li>${e}</li>`;
+      html += `</ul>`;
+    }
+    html += `<div class="section-title">Game Effect Description</div><p>${w.desc}</p>`;
+    if (tech) {
+      html += `<div class="section-title">Required Technology</div>`;
+      html += this.encyLink('techs', tech.id, '🔬 ' + tech.name);
+    }
+    return html;
+  },
+
+  getUnitUpgradeLine(unitId) {
+    const typeMap = {};
+    for (const u of UNIT_TYPES) {
+      if (!typeMap[u.type]) typeMap[u.type] = [];
+      typeMap[u.type].push(u);
+    }
+    const unit = UNIT_TYPES.find(u => u.id === unitId);
+    if (!unit) return [];
+    const line = typeMap[unit.type] || [];
+    line.sort((a, b) => ERAS.indexOf(a.era) - ERAS.indexOf(b.era));
+    return line;
+  },
+
+  renderUnitDetail(id) {
+    const u = UNIT_TYPES.find(x => x.id === id);
+    if (!u) return '';
+    const domainIcons = {land:'🟤 Land', sea:'🔵 Naval', air:'✈️ Air'};
+    let html = `<h2>${u.name}</h2>`;
+    html += `<span class="badge badge-era">${ERA_ICONS[u.era]} ${ERA_NAMES[u.era]}</span> `;
+    html += `<span class="badge badge-domain">${domainIcons[u.domain] || u.domain}</span> `;
+    html += `<span class="badge badge-type">${u.type}</span>`;
+    if (u.desc) html += `<div class="flavor">${u.desc}</div>`;
+    html += `<div class="section-title">Statistics</div>`;
+    html += `<div class="stat-grid">`;
+    if (u.str) html += this.statBox('⚔️ Strength', u.str);
+    if (u.rng) html += this.statBox('🏹 Range', u.rng);
+    html += this.statBox('🚶 Movement', u.mv);
+    html += this.statBox('💰 Cost', u.cost);
+    html += `</div>`;
+    // Requirements
+    html += `<div class="section-title">Requirements</div>`;
+    const tech = TECHS.find(t => t.id === u.req);
+    html += `<p>Technology: ${tech ? this.encyLink('techs', tech.id, '🔬 ' + tech.name) : u.req}</p>`;
+    if (u.resReq) {
+      const res = RESOURCES.find(r => r.id === u.resReq);
+      html += `<p>Resource: ${res ? this.encyLink('resources', res.id, '💎 ' + res.name) : u.resReq}</p>`;
+    }
+    // Special abilities
+    const abilities = [];
+    if (u.amphibious) abilities.push('Amphibious — no penalty attacking from sea');
+    if (u.capacity) abilities.push(`Transport — can carry ${u.capacity} land unit(s)`);
+    if (u.canBuild) abilities.push('Can build improvements');
+    if (u.founds) abilities.push(`Founds a ${u.founds}`);
+    if (u.popCost) abilities.push(`Costs ${u.popCost} population to produce`);
+    if (u.airSlots) abilities.push(`Carries ${u.airSlots} air units`);
+    if (abilities.length > 0) {
+      html += `<div class="section-title">Special Abilities</div><ul class="effects-list">`;
+      for (const a of abilities) html += `<li>${a}</li>`;
+      html += `</ul>`;
+    }
+    // Upgrade line
+    const line = this.getUnitUpgradeLine(u.id);
+    if (line.length > 1) {
+      html += `<div class="section-title">Upgrade Line (${u.type})</div>`;
+      html += `<div class="upgrade-chain">`;
+      for (let i = 0; i < line.length; i++) {
+        const cls = line[i].id === u.id ? 'current' : '';
+        html += `<span class="${cls}" style="cursor:pointer" onclick="UI.showEncyclopediaDetail('units','${line[i].id}')">${line[i].name}</span>`;
+        if (i < line.length - 1) html += `<span style="color:#888">→</span>`;
+      }
+      html += `</div>`;
+    }
+    return html;
+  },
+
+  renderConceptDetail(id) {
+    const concepts = {
+      eras: `<h2>📅 Eras</h2>
+        <div class="flavor">From the first spark of fire to the red sands of Mars, your civilization must traverse nine distinct ages of progress.</div>
+        <div class="section-title">The Nine Eras</div>
+        <div class="stat-grid">
+          ${ERAS.map(e => `<div class="stat-box"><div class="stat-value">${ERA_ICONS[e]} ${ERA_NAMES[e]}</div></div>`).join('')}
+        </div>
+        <div class="section-title">How Eras Work</div>
+        <p>Your civilization\'s era is determined by the technologies you\'ve researched. When you research a technology from a later era, you begin transitioning into that era. Your current era affects which buildings, units, and wonders you can build.</p>
+        <p>Eras can overlap — you may still be building medieval units while researching renaissance technology. The key is that each era\'s content becomes available as you research its technologies.</p>
+        <p>Later eras have more expensive technologies but unlock dramatically more powerful units and buildings. Rushing to a new era can give you a military advantage, but neglecting earlier techs may leave gaps in your economy.</p>`,
+
+      city_tiers: `<h2>🏘️ City Tiers</h2>
+        <div class="flavor">A small campfire grows into a hamlet, then a village, and eventually a sprawling metropolis. Your city\'s size determines its potential.</div>
+        <div class="section-title">Tier Thresholds</div>
+        <div class="stat-grid">
+          ${CITY_TIERS.map(t => `<div class="stat-box">
+            <div class="stat-label">${t.emoji} ${t.name}</div>
+            <div class="stat-value">Pop ${t.pop}+</div>
+            <div style="color:#888;font-size:11px">Radius: ${t.radius} | Slots: ${t.slots}</div>
+          </div>`).join('')}
+        </div>
+        <div class="section-title">How Tiers Work</div>
+        <p>As a city\'s population grows, it automatically upgrades to higher tiers. Each tier increases the city\'s territory radius (how many tiles it can work) and building slots (how many buildings it can hold).</p>
+        <p>A Hamlet starts with just 3 building slots and a radius of 1 tile. A Metropolis at 35+ population commands 22 building slots and a 3-tile radius, making it an economic powerhouse.</p>
+        <p>Plan your buildings carefully — slot-limited cities must prioritize the most impactful buildings for their role (production hub, science city, gold generator, etc.).</p>`,
+
+      combat: `<h2>⚔️ Combat</h2>
+        <div class="flavor">War is not simply about who has the bigger army — terrain, technology, and tactics all play crucial roles on the battlefield.</div>
+        <div class="section-title">Damage Formula</div>
+        <p>When two units fight, damage is calculated based on the <b>strength ratio</b> between attacker and defender. The base damage formula considers:</p>
+        <ul class="effects-list">
+          <li><b>Base Strength</b> — each unit\'s inherent combat strength stat</li>
+          <li><b>HP Modifier</b> — wounded units deal less damage (proportional to remaining HP)</li>
+          <li><b>Terrain Defense</b> — the defender gets a bonus from terrain (Hills +50%, Forest +25%, etc.)</li>
+          <li><b>Fortification</b> — fortified units receive a defense bonus</li>
+          <li><b>City Defense</b> — units in cities benefit from walls, castles, and other defensive buildings</li>
+        </ul>
+        <div class="section-title">Ranged Combat</div>
+        <p>Ranged units can attack at a distance without taking counter-damage. However, they are typically fragile in melee — protect them with front-line units.</p>
+        <div class="section-title">Unit Types</div>
+        <ul class="effects-list">
+          <li><b>Melee</b> — standard front-line fighters</li>
+          <li><b>Ranged</b> — attacks from distance, weak in melee</li>
+          <li><b>Mounted</b> — fast, strong, but vulnerable to anti-cavalry</li>
+          <li><b>Anti-Cavalry</b> — bonus vs mounted units</li>
+          <li><b>Siege</b> — powerful ranged, bonus vs cities</li>
+          <li><b>Naval</b> — operates on water tiles</li>
+          <li><b>Air</b> — operates from cities or carriers, high mobility</li>
+          <li><b>Recon</b> — fast scouts with terrain bonuses</li>
+        </ul>`,
+
+      happiness: `<h2>😊 Happiness</h2>
+        <div class="flavor">A content populace is a productive one. Let them grow miserable, and revolution follows.</div>
+        <div class="section-title">What Affects Happiness</div>
+        <ul class="effects-list">
+          <li><b>Population</b> — each citizen consumes happiness; larger cities need more entertainment</li>
+          <li><b>Buildings</b> — many buildings provide happiness (Tavern, Cathedral, Stadium, etc.)</li>
+          <li><b>Wonders</b> — empire-wide happiness from wonders like Notre Dame (+10) or Taj Mahal (+10)</li>
+          <li><b>Luxury Resources</b> — each unique luxury provides happiness to your empire</li>
+          <li><b>War Weariness</b> — prolonged wars decrease happiness</li>
+        </ul>
+        <div class="section-title">Golden Ages</div>
+        <p>When happiness is exceptionally high, your civilization enters a <b>Golden Age</b> — a period of dramatically increased yields across all cities. Golden Ages last several turns and provide bonus food, production, gold, and culture.</p>
+        <div class="section-title">Revolts</div>
+        <p>If happiness drops below zero, cities become unhappy. Severely unhappy cities may experience <b>revolts</b>, temporarily losing production and potentially spawning rebel units. Keep your people content!</p>`,
+
+      victory: `<h2>🏆 Victory Conditions</h2>
+        <div class="flavor">There are many paths to glory. Choose yours wisely, for each demands a different strategy.</div>
+        <div class="section-title">The Six Paths to Victory</div>
+        <ul class="effects-list">
+          <li><b>🗡️ Domination</b> — capture all enemy capital cities. The classic military victory for warmongers.</li>
+          <li><b>🔬 Science</b> — launch three Mars Shuttles. Requires the most advanced technologies and massive production. Build Launch Pads and reach the Mars Colony tech.</li>
+          <li><b>🎭 Cultural</b> — accumulate enough culture to become the dominant civilization. Build theatres, museums, and wonders that generate culture.</li>
+          <li><b>🤝 Diplomatic</b> — win through diplomatic influence. Requires the United Nations wonder. Build relationships and influence.</li>
+          <li><b>📜 History</b> — achieve the highest history score. Legacy buildings, heritage centres, and historic wonders contribute. The long game.</li>
+          <li><b>💰 Economic</b> — accumulate massive wealth and trade dominance. Markets, banks, stock exchanges — become the economic superpower.</li>
+        </ul>
+        <div class="section-title">Score Victory</div>
+        <p>If no other victory is achieved by the end of the game, the civilization with the highest composite score wins. Score is based on population, technology, territory, wonders, and military strength, modified by difficulty level.</p>`,
+
+      difficulty: `<h2>🎚️ Difficulty Levels</h2>
+        <div class="flavor">From the gentle ooze of Amoeba to the merciless calculations of the Singularity AI — choose your challenge.</div>
+        <div class="section-title">The Eight Levels</div>
+        <div class="stat-grid">
+          ${DIFFICULTY.map(d => `<div class="stat-box">
+            <div class="stat-label">${d.emoji} ${d.name}</div>
+            <div style="color:#ccc;font-size:12px;margin-top:4px">
+              Player: ${Math.round(d.pRes*100)}% research, ${Math.round(d.pDev*100)}% dev<br>
+              AI: ${Math.round(d.aiRes*100)}% research, ${Math.round(d.aiDev*100)}% dev<br>
+              AI Combat: ${Math.round(d.aiCombat*100)}%<br>
+              Score: ×${d.scoreMul}
+              ${d.startBonus ? '<br>AI starts with extra units/techs' : ''}
+            </div>
+          </div>`).join('')}
+        </div>
+        <div class="section-title">How Difficulty Works</div>
+        <p>Lower difficulties give the player bonuses to research and development speed while handicapping the AI. Higher difficulties do the opposite — the AI gets faster research, cheaper units, and starting bonuses like extra settlers, warriors, techs, and gold.</p>
+        <p>Score multipliers reward playing on harder difficulties. A victory on Singularity AI is worth 4× the score of the same victory on Amoeba.</p>`,
+
+      fog_of_war: `<h2>🌫️ Fog of War</h2>
+        <div class="flavor">Beyond the edge of your scouts\' sight, the world is shrouded in mystery. What dangers — or opportunities — lurk in the unknown?</div>
+        <div class="section-title">Visibility</div>
+        <p>Each of your units and cities has a <b>sight radius</b> — the area of the map they can see. Tiles outside any unit or city\'s sight are hidden by the Fog of War.</p>
+        <div class="section-title">Explored vs Unexplored</div>
+        <ul class="effects-list">
+          <li><b>Unexplored</b> — tiles you\'ve never seen appear completely black</li>
+          <li><b>Explored (fogged)</b> — tiles you\'ve seen before but can\'t currently see show terrain but no unit/city updates</li>
+          <li><b>Visible</b> — tiles currently in a unit or city\'s sight radius show everything in real-time</li>
+        </ul>
+        <p>Scout units are invaluable for exploring — they move fast and have extended sight range. Maintaining vision across your borders helps you spot incoming invasions.</p>`,
+
+      legacy: `<h2>📜 Legacy Buildings & History</h2>
+        <div class="flavor">Great civilizations are remembered not just for their armies, but for the stories they leave behind.</div>
+        <div class="section-title">History Points</div>
+        <p><b>History</b> (📜) is a resource that accumulates over time. It represents your civilization\'s cultural legacy and historical significance. History is generated by:</p>
+        <ul class="effects-list">
+          <li>Certain buildings (Burial Mound, Museum, Heritage Centre, Heritage Vault)</li>
+          <li>Wonders (Ark of Civilization provides +100% History)</li>
+          <li>Cultural achievements and territorial expansion</li>
+        </ul>
+        <div class="section-title">Legacy Buildings</div>
+        <p>Some buildings have a <b>history modifier</b> (histMod) that multiplies your history generation in that city. Stacking these in a single "history city" can generate enormous amounts of legacy points.</p>
+        <div class="section-title">History Victory</div>
+        <p>Accumulating the most history points is one of the six victory conditions. It rewards long-term planning and cultural investment over military conquest.</p>`
+    };
+    return concepts[id] || '<p>Unknown concept</p>';
   },
 
   // ========== NOTIFICATIONS ==========

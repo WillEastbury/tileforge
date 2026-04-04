@@ -144,6 +144,18 @@ const Renderer = {
         Game.endTurn();
       } else if (e.code === 'KeyT') {
         UI.showTechTree();
+      } else if (e.code === 'KeyE') {
+        const ep = document.getElementById('encyclopedia-panel');
+        if (ep && !ep.classList.contains('hidden')) {
+          UI.closeEncyclopedia();
+        } else {
+          UI.showEncyclopedia();
+        }
+      } else if (e.code === 'Escape') {
+        const ep = document.getElementById('encyclopedia-panel');
+        if (ep && !ep.classList.contains('hidden')) {
+          UI.closeEncyclopedia();
+        }
       } else if (e.code === 'KeyF' && Game.selectedUnit) {
         Game.selectedUnit.fortified = true;
         Game.selectedUnit.movementLeft = 0;

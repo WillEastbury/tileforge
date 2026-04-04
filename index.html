@@ -95,6 +95,7 @@
       </div>
       <div class="top-buttons">
         <button class="btn-sm" onclick="UI.showTechTree()" title="Tech Tree">🔬</button>
+        <button class="btn-sm" onclick="UI.showEncyclopedia()" title="Tileopedia">📖</button>
         <button class="btn-sm" onclick="UI.showSaveGame()" title="Save Game">💾</button>
         <button class="btn-sm" onclick="UI.toggleMenu()" title="Menu">☰</button>
       </div>
@@ -131,6 +132,19 @@
         <button class="btn-close" onclick="UI.closeTechTree()">&times;</button>
       </div>
       <div id="tech-tree-content"></div>
+    </div>
+
+    <!-- Encyclopedia Panel (overlay) -->
+    <div id="encyclopedia-panel" class="overlay-panel hidden">
+      <div class="panel-header">
+        <h3>📖 Tileopedia</h3>
+        <button class="btn-close" onclick="UI.closeEncyclopedia()">&times;</button>
+      </div>
+      <div id="encyclopedia-content">
+        <div id="ency-sidebar"></div>
+        <div id="ency-list"></div>
+        <div id="ency-detail"></div>
+      </div>
     </div>
 
     <!-- Bottom Bar -->
