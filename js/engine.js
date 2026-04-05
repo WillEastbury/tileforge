@@ -1063,12 +1063,13 @@ const Game = {
       if (!u) return;
       name = u.name; cost = u.cost;
     }
-    // If switching from an existing build, carry over 50% of progress
-    let carryOver = 0;
+    // Refund 50% of invested production as gold when switching
     if (city.buildQueue && city.buildQueue.progress > 0) {
-      carryOver = Math.floor(city.buildQueue.progress * 0.5);
+      const refund = Math.floor(city.buildQueue.progress * 0.5);
+      const player = this.state.players[city.owner];
+      if (player) player.gold += refund;
     }
-    city.buildQueue = {type, id, name, progress: carryOver, cost};
+    city.buildQueue = {type, id, name, progress: 0, cost};
   },
 
   // ========== FOG OF WAR ==========
