@@ -35,6 +35,8 @@ function startNewGame() {
   Renderer.updateMinimap();
   UI.updateTopBar();
   UI.updateRightPanel();
+  UI.initMusic();
+  UI.showPrologue();
   UI.notify('Welcome to Apollo\'s Time! Found your civilization and conquer the world.');
 }
 
@@ -100,6 +102,8 @@ function loadGameSlot(index) {
   Renderer.updateMinimap();
   UI.updateTopBar();
   UI.updateRightPanel();
+  if (!UI.musicPlayer) UI.initMusic();
+  UI.playEraMusic(p.era);
   UI.notify('Game loaded from Slot ' + (index + 1));
 }
 

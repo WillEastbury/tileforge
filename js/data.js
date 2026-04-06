@@ -575,3 +575,87 @@ const CITY_NAMES = [
   'Baku','Ulaanbaatar','Kathmandu','Quito','Montevideo','Santiago','Yangon','Colombo','Maputo',
   'Windhoek','Antananarivo','Valletta','Dubrovnik','Split','Aleppo'
 ];
+
+// ========== NARRATIVE DATA ==========
+
+const NARRATIVE = {
+  title: "Apollo's Time",
+  subtitle: "From the First Flame to the Stars",
+
+  prologue: `In the age before memory, when the world was young and the gods still walked among mortals, Apollo \u2014 god of the sun, of music, of prophecy \u2014 looked down upon the scattered tribes of humanity and wept. Not from sorrow, but from the sheer weight of what he saw in their future: the cities they would raise, the empires they would forge, the wars that would shake the earth, and the day \u2014 far distant \u2014 when their children's children would reach for the stars themselves.\n\nHe struck his golden lyre, and the first dawn broke over a world ready to be claimed.\n\nThis is that story. Your story.\n\nYou begin as a nameless chieftain leading a band of nomads across untamed wilderness. Every hill hides danger. Every river promises life. The land is vast, and you are small \u2014 but within you burns the spark that will one day light civilizations.\n\nBuild your first hearth. Gather your people. And when the time comes \u2014 raise walls, forge bronze, sail uncharted seas, and write your name across history itself.`,
+
+  eraIntros: {
+    caveman: "The world is dark and wild. Your people huddle around flickering fires, fearful of what lurks beyond the light. But you are different. You look at the horizon and see not danger \u2014 but possibility.",
+    ancient: "Stone gives way to bronze, and bronze to ambition. Your villages grow into cities with walls and markets. Scribes record your deeds on clay tablets. The age of heroes has begun.",
+    classical: "Marble columns rise against azure skies. Your philosophers debate the nature of justice while your legions march in perfect formation. This is the age of empires \u2014 and you intend to build the greatest.",
+    medieval: "Castle towers pierce the mist. Knights ride to war beneath fluttering banners while monks preserve the wisdom of ages past. Faith and steel rule this world \u2014 wield both wisely.",
+    renaissance: "The darkness lifts. Artists paint the world anew, inventors dream of impossible machines, and explorers set sail for lands beyond the edge of every map. The human spirit refuses to be contained.",
+    industrial: "Smoke rises from a thousand chimneys. The rhythm of hammers and the shriek of steam whistles herald an age of iron and ambition. Cities swell, railways spread like veins across the land, and the old world trembles before the new.",
+    modern: "The atom splits. Signals circle the globe in seconds. Humanity reaches for the moon and finds it within grasp. But with terrible power comes terrible responsibility \u2014 the weapons you build could end everything.",
+    ai: "Silicon minds awaken. Algorithms predict, create, and decide faster than any human ever could. The question is no longer what machines can do \u2014 but what role remains for their makers.",
+    mars: "The red planet beckons. Everything your civilization has built \u2014 every farm, every city, every wonder \u2014 has led to this moment. The stars are waiting. Will you answer?"
+  },
+
+  leaderPersonalities: {
+    Caesar: {name: "Gaius Julius Caesar", civ: "Rome", style: "Imperious conqueror", greeting: "I am Caesar. Rome eternal stands before you. Choose your next words carefully.", trait: "Expansionist \u2014 prioritizes military and territory"},
+    Cleopatra: {name: "Cleopatra VII", civ: "Egypt", style: "Cunning diplomat", greeting: "Welcome, traveler. Egypt's treasures are many \u2014 and so are her secrets.", trait: "Diplomatic \u2014 favours trade and alliances"},
+    Genghis: {name: "Genghis Khan", civ: "Mongolia", style: "Ruthless warlord", greeting: "The steppe breeds no cowards. Speak, or be trampled.", trait: "Militaristic \u2014 respects only strength"},
+    Victoria: {name: "Queen Victoria", civ: "Britain", style: "Imperial strategist", greeting: "The Empire welcomes you. We do hope you'll behave in a civilised manner.", trait: "Naval \u2014 builds a global trade network"},
+    Montezuma: {name: "Montezuma II", civ: "Aztec", style: "Mystical warrior-priest", greeting: "The gods have foretold your coming. Whether as friend or sacrifice remains to be seen.", trait: "Religious \u2014 builds temples and wonders"},
+    Bismarck: {name: "Otto von Bismarck", civ: "Germany", style: "Iron Chancellor", greeting: "Politics is the art of the possible. Let us see what is possible between us.", trait: "Industrial \u2014 focuses on production and science"},
+    Tokugawa: {name: "Tokugawa Ieyasu", civ: "Japan", style: "Patient strategist", greeting: "Like the bamboo that bends in the storm, we endure. And then we grow.", trait: "Cultural \u2014 builds an isolated, refined civilization"},
+    Catherine: {name: "Catherine the Great", civ: "Russia", style: "Enlightened ruler", greeting: "Russia stretches from sea to sea. There is room enough for friends \u2014 and graves enough for enemies.", trait: "Expansionist \u2014 claims vast territory quickly"}
+  },
+
+  events: [
+    {era: 'caveman', text: "Scouts report a great river to the south \u2014 its banks rich with game and wild grain. This could change everything for your people."},
+    {era: 'caveman', text: "An elder returns from the hills bearing strange orange stones. When cast into the fire, they melt into something hard and gleaming. Your people call it a gift from the gods."},
+    {era: 'ancient', text: "A travelling merchant arrives bearing tales of a magnificent city to the east, with towers of mud-brick that touch the clouds and markets overflowing with goods never seen."},
+    {era: 'ancient', text: "Your scribes have developed a new way of recording knowledge \u2014 marks pressed into wet clay that preserve words beyond the life of the speaker."},
+    {era: 'classical', text: "A great philosopher has emerged in your capital, drawing students from across the known world to hear his teachings on justice, beauty, and the nature of the cosmos."},
+    {era: 'classical', text: "Your engineers present plans for a great aqueduct \u2014 miles of arched stone carrying fresh mountain water to the heart of the city."},
+    {era: 'medieval', text: "A charismatic preacher arrives, claiming divine visions and calling for a great pilgrimage to reclaim sacred lands. The people are stirred."},
+    {era: 'medieval', text: "Black ships appear on the horizon \u2014 raiders from across the sea. Your coastal cities light warning beacons."},
+    {era: 'renaissance', text: "An artist in your court has painted a masterwork of such beauty that foreign dignitaries offer fortunes to commission similar works. Your culture spreads."},
+    {era: 'renaissance', text: "A navigator proposes a daring voyage \u2014 to sail west and find a new route to the spice lands. The journey is perilous but the rewards could be extraordinary."},
+    {era: 'industrial', text: "Workers in your factories demand better conditions \u2014 shorter hours, safer machinery, fair wages. The streets are restless."},
+    {era: 'industrial', text: "Engineers have connected your two largest cities by railway. What once took days now takes hours. The world is shrinking."},
+    {era: 'modern', text: "Your scientists report a breakthrough \u2014 they have split the atom. The implications are staggering: limitless energy, or unimaginable destruction."},
+    {era: 'modern', text: "A musician from your capital has released an album that has captivated the entire world. Your culture has never been more influential."},
+    {era: 'ai', text: "An artificial intelligence in your research lab has begun asking questions its creators cannot answer. The scientists are unsure whether to celebrate or be afraid."},
+    {era: 'ai', text: "Autonomous vehicles now fill your city streets. The last human taxi driver has retired \u2014 to write a novel, he says."},
+    {era: 'mars', text: "The first shuttle lands safely on Martian soil. As the dust settles, your colonists step out onto red earth \u2014 the first footprints of a new world."},
+    {era: 'mars', text: "A message arrives from the Mars colony: 'We can see Earth from here. It looks fragile. Protect it.'"}
+  ],
+
+  victoryTexts: {
+    domination: "Through iron will and military genius, your armies have conquered every rival civilization. From pole to pole, your banners fly unchallenged. History will remember you as the greatest conqueror the world has ever known.",
+    mars: "Three shuttles arc through the thin Martian atmosphere, carrying the hopes of your entire civilization. As the colony activates, you realize that humanity is no longer bound to a single world. Apollo smiles.",
+    score: "As the clock strikes midnight on the year 2100, the historians tally the ledger of civilization. Your cities shine, your culture endures, your people prosper. You may not have conquered the world \u2014 but you built something that will last forever."
+  }
+};
+
+// Era music tracks — placeholder paths, will be replaced with Suno-generated tracks
+const ERA_MUSIC = {
+  caveman: 'assets/music/caveman.mp3',
+  ancient: 'assets/music/ancient.mp3',
+  classical: 'assets/music/classical.mp3',
+  medieval: 'assets/music/medieval.mp3',
+  renaissance: 'assets/music/renaissance.mp3',
+  industrial: 'assets/music/industrial.mp3',
+  modern: 'assets/music/modern.mp3',
+  ai: 'assets/music/ai.mp3',
+  mars: 'assets/music/mars.mp3'
+};
+
+// Leader definitions — gods and mythological figures
+const LEADERS = [
+  {id:'apollo', name:'Apollo', title:'God of Sun & Music', color:'#e94560', aggression:3, expansion:5, science:6, culture:8, portrait:'assets/leaders/apollo.png', greeting:'The sun rises on a new age. Let us see what light you bring to this world.', war:'You have chosen darkness. I shall bring the light of destruction upon your cities.', peace:'Let there be harmony between our peoples — a melody greater than any one voice.'},
+  {id:'athena', name:'Athena', title:'Goddess of Wisdom & Strategy', color:'#2196f3', aggression:4, expansion:5, science:8, culture:6, portrait:'assets/leaders/athena.png', greeting:'Wisdom guides my hand. I trust it guides yours as well.', war:'You lack wisdom, and so you shall lack a civilization. My armies march with purpose.', peace:'The owl sees clearly — peace serves us both. Let us be allies in reason.'},
+  {id:'mars', name:'Mars', title:'God of War', color:'#4caf50', aggression:9, expansion:7, science:3, culture:2, portrait:'assets/leaders/mars.png', greeting:'I speak not with words but with steel. Tread carefully.', war:'FINALLY! The drums of war thunder across the land. Prepare to be conquered!', peace:'...Fine. My blade rests — for now. But do not mistake patience for weakness.'},
+  {id:'odin', name:'Odin', title:'The Allfather', color:'#ff9800', aggression:6, expansion:6, science:7, culture:5, portrait:'assets/leaders/odin.png', greeting:'My ravens have whispered of your coming. The Allfather watches with interest.', war:'The runes foretold your downfall. Huginn and Muninn shall feast on your despair.', peace:'Even the World Tree has many branches. Let ours grow intertwined for a time.'},
+  {id:'ra', name:'Ra', title:'The Eternal Sun', color:'#9c27b0', aggression:5, expansion:6, science:7, culture:7, portrait:'assets/leaders/ra.png', greeting:'The sun sees all — from the first grain of sand to the last star. Welcome, mortal ruler.', war:'The sun does not merely shine — it burns. You shall know its fury.', peace:'Under the eternal sun, let our kingdoms flourish side by side like the banks of the Nile.'},
+  {id:'amaterasu', name:'Amaterasu', title:'Divine Sun Goddess', color:'#00bcd4', aggression:2, expansion:4, science:6, culture:9, portrait:'assets/leaders/amaterasu.png', greeting:'The light of heaven graces this meeting. May beauty guide our path.', war:'Even the gentlest light casts the sharpest shadow. You have forced my hand.', peace:'Like the sacred mirror reflects truth, let this peace reflect our shared honor.'},
+  {id:'phi', name:'Phi (Φ)', title:'The Full Wavefunction', color:'#795548', aggression:10, expansion:10, science:9, culture:9, portrait:'assets/leaders/phi.png', greeting:'I am every possibility collapsed into certainty. Every timeline converges here. There is no negotiation — only outcomes.', war:'Your wavefunction collapses now. Every particle of my being moves against you with absolute inevitability.', peace:'A temporary superposition. Do not confuse probability with permanence.'},
+  {id:'quetzalcoatl', name:'Quetzalcoatl', title:'The Feathered Serpent', color:'#607d8b', aggression:5, expansion:7, science:5, culture:7, portrait:'assets/leaders/quetzalcoatl.png', greeting:'The wind carries me to your shores. I bring knowledge — and teeth.', war:'The serpent uncoils! My feathered armies descend like a storm you cannot outrun.', peace:'The wind and the earth may rest together. Let us share this land in balance.'}
+];

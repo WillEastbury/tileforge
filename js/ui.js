@@ -1363,11 +1363,17 @@ const UI = {
     const textEl = document.getElementById('dialogue-text');
     const actionsEl = document.getElementById('dialogue-actions');
 
-    // Portrait: colored square with leader initial
+    // Portrait: use leader image if available, else colored square with initial
     const player = Game.state ? Game.state.players.find(p => p.name === leader) : null;
     const color = player ? player.color : '#556';
-    portrait.style.background = `linear-gradient(135deg, ${color}, ${color}88)`;
-    portrait.textContent = leader ? leader.charAt(0).toUpperCase() : '?';
+    const leaderData = typeof LEADERS !== 'undefined' ? LEADERS.find(l => l.color === color) || LEADERS[0] : null;
+    if (leaderData && leaderData.portrait) {
+      portrait.style.background = `url(${leaderData.portrait}) center/cover no-repeat, linear-gradient(135deg, ${color}, ${color}88)`;
+      portrait.textContent = '';
+    } else {
+      portrait.style.background = `linear-gradient(135deg, ${color}, ${color}88)`;
+      portrait.textContent = leader ? leader.charAt(0).toUpperCase() : '?';
+    }
 
     nameEl.textContent = leader || 'Unknown';
 

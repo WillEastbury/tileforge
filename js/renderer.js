@@ -38,6 +38,8 @@ const Renderer = {
   coastTextures: [],
   coastFogTextures: [],
   contextTextureCache: {},
+  unitTextures: {},
+  unitTexturesLoaded: false,
   initialized: false,
   animations: [],
   animating: false,
@@ -80,6 +82,7 @@ const Renderer = {
     this.mapContainer.addChild(this.fogLayer);
 
     this.generateTerrainTextures();
+    this.preloadUnitTextures();
     this.setupInteraction(container);
     this.initialized = true;
 
@@ -1209,6 +1212,26 @@ const Renderer = {
     return [nT, eT, sT, wT];
   },
 
+  preloadUnitTextures() {
+    this.unitTextures = {};
+    let loaded = 0;
+    const ids = UNIT_TYPES.map(u => u.id);
+    const total = ids.length;
+    ids.forEach(id => {
+      const img = new window.Image();
+      img.onload = () => {
+        this.unitTextures[id] = PIXI.Texture.from(img);
+        loaded++;
+        if (loaded >= total) this.unitTexturesLoaded = true;
+      };
+      img.onerror = () => {
+        loaded++;
+        if (loaded >= total) this.unitTexturesLoaded = true;
+      };
+      img.src = 'assets/units/' + id + '.png';
+    });
+  },
+
   setupInteraction(container) {
     let pinchDist = 0;
 
@@ -1817,31 +1840,42 @@ const Renderer = {
     const ownerColor = parseInt(CIV_COLORS[unit.owner].replace('#',''), 16);
     const container = new PIXI.Container();
 
-    const gfx = new PIXI.Graphics();
-    if (uType.domain === 'sea') {
-      gfx.beginFill(ownerColor, 0.85);
-      gfx.moveTo(0, -ts/2 + 4);
-      gfx.lineTo(ts/2 - 4, 0);
-      gfx.lineTo(0, ts/2 - 4);
-      gfx.lineTo(-ts/2 + 4, 0);
-      gfx.closePath();
-      gfx.endFill();
-    } else if (uType.type === 'civilian' || uType.type === 'settler') {
-      gfx.beginFill(ownerColor, 0.85);
-      gfx.drawCircle(0, 0, ts/3);
-      gfx.endFill();
+    // Use PNG sprite if texture is loaded, otherwise fall back to shape drawing
+    const tex = this.unitTextures[unit.type];
+    if (tex) {
+      const sprite = new PIXI.Sprite(tex);
+      sprite.width = ts - 4;
+      sprite.height = ts - 4;
+      sprite.anchor.set(0.5);
+      sprite.tint = ownerColor;
+      container.addChild(sprite);
     } else {
-      gfx.lineStyle(2, ownerColor);
-      gfx.beginFill(ownerColor, 0.7);
-      gfx.drawRoundedRect(-ts/2 + 5, -ts/2 + 5, ts - 11, ts - 11, 3);
-      gfx.endFill();
-    }
-    container.addChild(gfx);
+      const gfx = new PIXI.Graphics();
+      if (uType.domain === 'sea') {
+        gfx.beginFill(ownerColor, 0.85);
+        gfx.moveTo(0, -ts/2 + 4);
+        gfx.lineTo(ts/2 - 4, 0);
+        gfx.lineTo(0, ts/2 - 4);
+        gfx.lineTo(-ts/2 + 4, 0);
+        gfx.closePath();
+        gfx.endFill();
+      } else if (uType.type === 'civilian' || uType.type === 'settler') {
+        gfx.beginFill(ownerColor, 0.85);
+        gfx.drawCircle(0, 0, ts/3);
+        gfx.endFill();
+      } else {
+        gfx.lineStyle(2, ownerColor);
+        gfx.beginFill(ownerColor, 0.7);
+        gfx.drawRoundedRect(-ts/2 + 5, -ts/2 + 5, ts - 11, ts - 11, 3);
+        gfx.endFill();
+      }
+      container.addChild(gfx);
 
-    const icon = this.getUnitIcon(uType);
-    const text = new PIXI.Text(icon, { fontSize: 11, fill: 0xFFFFFF });
-    text.anchor.set(0.5);
-    container.addChild(text);
+      const icon = this.getUnitIcon(uType);
+      const text = new PIXI.Text(icon, { fontSize: 11, fill: 0xFFFFFF });
+      text.anchor.set(0.5);
+      container.addChild(text);
+    }
 
     if (unit.hp < 100) {
       const hpPct = unit.hp / 100;
