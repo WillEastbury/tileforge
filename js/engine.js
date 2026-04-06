@@ -11,10 +11,10 @@ const Game = {
 
   START_YEAR: -3000, // 3000 BC
 
-  // Era-based year steps: ~400 turns spans 3000 BC → 2100 AD
+  // Era-based year steps: ~2000 turns spans 3000 BC → 2100 AD
   ERA_YEAR_STEPS: {
-    caveman: 40, ancient: 25, classical: 20, medieval: 15,
-    renaissance: 10, industrial: 5, modern: 2, ai: 1, mars: 1
+    caveman: 8, ancient: 5, classical: 4, medieval: 3,
+    renaissance: 2, industrial: 1, modern: 0.5, ai: 0.25, mars: 0.25
   },
 
   getYear() {
