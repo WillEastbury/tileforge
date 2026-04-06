@@ -112,8 +112,9 @@
 
     <!-- Minimap -->
     <div id="minimap-container">
-      <canvas id="minimap" width="200" height="130" onclick="Renderer.minimapClick(event)"></canvas>
+      <canvas id="minimap" onclick="Renderer.minimapClick(event)"></canvas>
     </div>
+    <button id="minimap-toggle" onclick="document.getElementById('minimap-container').classList.toggle('visible')" title="Toggle Minimap">🗺️</button>
 
     <!-- Right Panel -->
     <div id="right-panel" class="panel side-panel">

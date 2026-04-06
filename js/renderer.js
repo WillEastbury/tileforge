@@ -2071,8 +2071,8 @@ const Renderer = {
     const rect = canvas.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
-    const scaleX = canvas.width / Game.state.mapWidth;
-    const scaleY = canvas.height / Game.state.mapHeight;
+    const scaleX = rect.width / Game.state.mapWidth;
+    const scaleY = rect.height / Game.state.mapHeight;
     const tileCol = mx / scaleX;
     const tileRow = my / scaleY;
     this.camera.x = tileCol * this.tileSize;
@@ -2091,9 +2091,18 @@ const Renderer = {
   updateMinimap() {
     if (!Game.state) return;
     const canvas = document.getElementById('minimap');
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = rect.width;
+    const cssH = rect.height;
+    if (canvas.width !== Math.round(cssW * dpr) || canvas.height !== Math.round(cssH * dpr)) {
+      canvas.width = Math.round(cssW * dpr);
+      canvas.height = Math.round(cssH * dpr);
+    }
     const ctx = canvas.getContext('2d');
-    const w = canvas.width;
-    const h = canvas.height;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const w = cssW;
+    const h = cssH;
     const mapH = Game.state.mapHeight;
     const eqW = Game.state.mapWidth;
 
