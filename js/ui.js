@@ -437,6 +437,7 @@ const UI = {
   // ========== CITY PANEL ==========
 
   showCityPanel(city) {
+    this.closeTechTree();
     const panel = document.getElementById('city-panel');
     panel.classList.remove('hidden');
 
@@ -585,6 +586,7 @@ const UI = {
   // ========== TECH TREE ==========
 
   showTechTree() {
+    this.closeCityPanel();
     const panel = document.getElementById('tech-panel');
     panel.classList.remove('hidden');
     this.renderTechTree();

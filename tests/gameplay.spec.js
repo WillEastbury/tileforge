@@ -269,10 +269,6 @@ test.describe('City Panel', () => {
       const p = Game.state.players[0];
       if (p.cities.length > 0) UI.showCityPanel(p.cities[0]);
     });
-    // Close any overlapping panels first, then click close
-    await page.evaluate(() => {
-      document.getElementById('tech-panel')?.classList.add('hidden');
-    });
     await page.click('#city-panel .btn-close');
     await expect(page.locator('#city-panel')).toHaveClass(/hidden/);
   });

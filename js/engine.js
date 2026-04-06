@@ -130,7 +130,8 @@ const Game = {
       pantheon: null,
       religion: null,
       relations: {}, // playerId -> {score, treaties: Set}
-      tradeRoutes: []
+      tradeRoutes: [],
+      wonders: []
     };
   },
 

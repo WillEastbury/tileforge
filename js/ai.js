@@ -231,9 +231,11 @@ const AI = {
         let score = terrain.food * 2 + terrain.prod;
         const neighbors = Game.getNeighbors(r, cc);
         for (const n of neighbors) {
-          const nt = TERRAINS[Game.mapData[n.r][n.c].terrain];
+          const nt_tile = Game.getTile(n.r, n.c);
+          if (!nt_tile) continue;
+          const nt = TERRAINS[nt_tile.terrain];
           score += nt.food + nt.prod * 0.5;
-          if (Game.mapData[n.r][n.c].resource) score += 2;
+          if (nt_tile.resource) score += 2;
         }
 
         // Prefer closer spots
