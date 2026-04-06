@@ -1548,8 +1548,8 @@ const UI = {
     btn.textContent = 'Continue';
     overlay.classList.remove('hidden');
     this._narrativeCallback = null;
-    // Auto-dismiss after 8 seconds
-    this._eraIntroTimer = setTimeout(() => this.closeNarrative(), 8000);
+    // Auto-dismiss after 20 seconds (longer texts need more reading time)
+    this._eraIntroTimer = setTimeout(() => this.closeNarrative(), 20000);
   },
 
   showRandomEvent(era) {
