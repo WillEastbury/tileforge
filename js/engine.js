@@ -148,7 +148,7 @@ const Game = {
           r, c, terrain: 17, // ocean default
           resource: null,
           improvement: null,
-          road: false,
+          road: null,
           owner: -1,
           cityId: null,
           unit: null,
@@ -612,8 +612,12 @@ const Game = {
     if (uType.type === 'recon') return 1; // Scouts ignore terrain
     const tile = this.getTile(tr, tc);
     const terrain = TERRAINS[tile.terrain];
-    // Roads reduce movement cost to 0.5 for land units
-    if (tile.road && uType.domain === 'land') return 0.5;
+    // Roads/railways/motorways reduce movement cost for land units
+    if (tile.road && uType.domain === 'land') {
+      if (tile.road === 'motorway') return 0.2;
+      if (tile.road === 'railway') return 0.33;
+      return 0.5; // basic road (true or 'road')
+    }
     return terrain.mv;
   },
 
@@ -689,6 +693,11 @@ const Game = {
   startBuildImprovement(unit, improvementId) {
     const imp = IMPROVEMENTS.find(i => i.id === improvementId);
     if (!imp) return;
+    const tile = this.getTile(unit.r, unit.c);
+    // Railway requires existing road
+    if (improvementId === 'railway' && (!tile.road || tile.road === 'railway' || tile.road === 'motorway')) return;
+    // Motorway requires existing railway
+    if (improvementId === 'motorway' && tile.road !== 'railway') return;
     unit.buildingImprovement = improvementId;
     unit.buildProgress = 0;
     unit.buildTurnsNeeded = imp.turns;
@@ -707,7 +716,11 @@ const Game = {
           const impId = unit.buildingImprovement;
           const imp = IMPROVEMENTS.find(i => i.id === impId);
           if (impId === 'road') {
-            tile.road = true;
+            tile.road = tile.road ? tile.road : 'road';
+          } else if (impId === 'railway') {
+            tile.road = 'railway';
+          } else if (impId === 'motorway') {
+            tile.road = 'motorway';
           } else {
             tile.improvement = impId;
           }
@@ -2051,7 +2064,7 @@ const Game = {
           terrain: td.t,
           resource: td.r ? RESOURCES.find(res => res.id === td.r) : null,
           improvement: td.i,
-          road: td.rd,
+          road: td.rd === true ? 'road' : td.rd, // backward-compat: true → 'road'
           owner: td.o,
           cityId: td.ci,
           unit: null,

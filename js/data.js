@@ -446,6 +446,8 @@ const IMPROVEMENTS = [
   {id:'lumber_mill',    name:'Lumber Mill',    icon:'🪓', turns:4, req:'toolcraft',       terrains:[2,6,14],     yields:{food:0,prod:2,gold:0}, desc:'Processes timber from surrounding forests into usable building materials.'},
   {id:'fishery',        name:'Fishery',        icon:'🐟', turns:3, req:'toolcraft',       terrains:[3,16,18],    yields:{food:2,prod:0,gold:0}, desc:'Nets and traps set in coastal and reef waters to harvest fish and shellfish.'},
   {id:'road',           name:'Road',           icon:'🛤️', turns:2, req:null,             terrains:'any_land',   yields:{food:0,prod:0,gold:0}, desc:'A cleared path that reduces movement cost. Connect cities for trade routes.'},
+  {id:'railway',        name:'Railway',        icon:'🚂', turns:4, req:'steam_power',    terrains:'any_land',   yields:{food:0,prod:1,gold:0}, desc:'Steel rails enabling rapid movement of troops and goods. Requires roads. Dramatically reduces travel time.'},
+  {id:'motorway',       name:'Motorway',       icon:'🛣️', turns:5, req:'combustion',     terrains:'any_land',   yields:{food:0,prod:0,gold:1}, desc:'Multi-lane paved highways for modern mechanized transport. Requires railways. The fastest land route.'},
 ];
 
 // Unit types — id, name, era, domain, str, rng, mv, cost, req (tech), type
