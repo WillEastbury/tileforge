@@ -408,3 +408,145 @@ html, body { height: 100%; overflow: hidden; font-family: 'Segoe UI', system-ui,
   font-style: italic;
   max-width: 400px;
 }
+
+/* ========== NARRATIVE OVERLAY ========== */
+
+#narrative-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.92);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: narrativeFadeIn 1.5s ease-out;
+}
+#narrative-overlay.hidden { display: none; }
+
+@keyframes narrativeFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes narrativeTextFadeIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+#narrative-content {
+  max-width: 680px;
+  padding: 48px 40px;
+  text-align: center;
+  animation: narrativeTextFadeIn 2s ease-out 0.5s both;
+}
+
+#narrative-title {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 42px;
+  color: #D4A843;
+  margin: 0 0 8px 0;
+  letter-spacing: 2px;
+  text-shadow: 0 0 30px rgba(212, 168, 67, 0.3);
+}
+
+#narrative-subtitle {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 16px;
+  color: #a08838;
+  margin: 0 0 36px 0;
+  font-style: italic;
+  letter-spacing: 1px;
+}
+
+#narrative-text {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 17px;
+  color: #d4c9a8;
+  line-height: 1.85;
+  margin: 0 0 40px 0;
+  text-align: left;
+  white-space: pre-line;
+}
+
+#narrative-dismiss {
+  background: transparent;
+  border: 2px solid #D4A843;
+  color: #D4A843;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 16px;
+  padding: 12px 40px;
+  cursor: pointer;
+  letter-spacing: 1px;
+  transition: all 0.3s ease;
+}
+#narrative-dismiss:hover {
+  background: #D4A843;
+  color: #1a1a2e;
+}
+
+/* Era intro variant */
+#narrative-overlay.era-intro #narrative-title {
+  font-size: 56px;
+  margin-bottom: 16px;
+}
+#narrative-overlay.era-intro #narrative-text {
+  text-align: center;
+  font-size: 19px;
+}
+
+/* Event notification variant */
+.notification.narrative-event {
+  border-left: 3px solid #D4A843;
+  background: linear-gradient(90deg, rgba(212,168,67,0.12), var(--bg-panel));
+  font-family: Georgia, 'Times New Roman', serif;
+  font-style: italic;
+  max-width: 440px;
+  line-height: 1.6;
+  color: #d4c9a8;
+}
+
+/* Music toggle button */
+#music-toggle {
+  background: none;
+  border: 1px solid var(--text-dim);
+  color: var(--text);
+  font-size: 16px;
+  padding: 2px 8px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+#music-toggle:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+/* Video Overlay */
+#video-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: #000;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#video-overlay.hidden { display: none; }
+#game-video {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+#video-skip {
+  position: absolute;
+  bottom: 30px;
+  right: 30px;
+  background: rgba(0,0,0,0.7);
+  border: 1px solid #c9a84c;
+  color: #c9a84c;
+  padding: 8px 20px;
+  font-size: 16px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+#video-skip:hover { background: rgba(201,168,76,0.3); }

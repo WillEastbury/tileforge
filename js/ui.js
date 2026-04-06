@@ -1234,7 +1234,8 @@ const UI = {
     }
   },
 
-  showVictory(msg) {
+  showVictory(msg, victoryType) {
+    if (victoryType) this.showVictoryNarrative(victoryType);
     const container = document.getElementById('notifications');
     const el = document.createElement('div');
     el.className = 'notification';
@@ -1505,5 +1506,198 @@ const UI = {
     refuseBtn.addEventListener('click', () => this.closeDialogue());
     actionsEl.appendChild(acceptBtn);
     actionsEl.appendChild(refuseBtn);
+  },
+
+  // ========== NARRATIVE SYSTEM ==========
+
+  _narrativeCallback: null,
+
+  showPrologue() {
+    const overlay = document.getElementById('narrative-overlay');
+    const title = document.getElementById('narrative-title');
+    const subtitle = document.getElementById('narrative-subtitle');
+    const text = document.getElementById('narrative-text');
+    const btn = document.getElementById('narrative-dismiss');
+    overlay.classList.remove('era-intro');
+    title.textContent = NARRATIVE.title;
+    subtitle.textContent = NARRATIVE.subtitle;
+    text.textContent = NARRATIVE.prologue;
+    btn.textContent = 'Begin Your Journey';
+    overlay.classList.remove('hidden');
+    this._narrativeCallback = () => {
+      this.playEraMusic(Game.state.players[0].era);
+    };
+  },
+
+  showEraIntro(era) {
+    const overlay = document.getElementById('narrative-overlay');
+    const title = document.getElementById('narrative-title');
+    const subtitle = document.getElementById('narrative-subtitle');
+    const text = document.getElementById('narrative-text');
+    const btn = document.getElementById('narrative-dismiss');
+    overlay.classList.add('era-intro');
+    title.textContent = ERA_ICONS[era] + ' ' + ERA_NAMES[era] + ' Era';
+    subtitle.textContent = '';
+    text.textContent = NARRATIVE.eraIntros[era] || '';
+    btn.textContent = 'Continue';
+    overlay.classList.remove('hidden');
+    this._narrativeCallback = null;
+    // Auto-dismiss after 8 seconds
+    this._eraIntroTimer = setTimeout(() => this.closeNarrative(), 8000);
+  },
+
+  showRandomEvent(era) {
+    if (Math.random() > 0.10) return;
+    const eraEvents = NARRATIVE.events.filter(e => e.era === era);
+    if (eraEvents.length === 0) return;
+    const evt = eraEvents[Math.floor(Math.random() * eraEvents.length)];
+    const container = document.getElementById('notifications');
+    const el = document.createElement('div');
+    el.className = 'notification narrative-event';
+    el.textContent = '\u{1F4DC} ' + evt.text;
+    el.style.cursor = 'pointer';
+    el.addEventListener('click', () => el.remove());
+    container.appendChild(el);
+    setTimeout(() => { if (el.parentNode) el.remove(); }, 10000);
+  },
+
+  showVictoryNarrative(type) {
+    const victoryText = NARRATIVE.victoryTexts[type];
+    if (!victoryText) return;
+    const overlay = document.getElementById('narrative-overlay');
+    const title = document.getElementById('narrative-title');
+    const subtitle = document.getElementById('narrative-subtitle');
+    const text = document.getElementById('narrative-text');
+    const btn = document.getElementById('narrative-dismiss');
+    overlay.classList.remove('era-intro');
+    title.textContent = '\u{1F3C6} Victory!';
+    subtitle.textContent = '';
+    text.textContent = victoryText;
+    btn.textContent = 'Continue';
+    overlay.classList.remove('hidden');
+    this._narrativeCallback = null;
+  },
+
+  closeNarrative() {
+    const overlay = document.getElementById('narrative-overlay');
+    overlay.classList.add('hidden');
+    if (this._eraIntroTimer) {
+      clearTimeout(this._eraIntroTimer);
+      this._eraIntroTimer = null;
+    }
+    if (this._narrativeCallback) {
+      this._narrativeCallback();
+      this._narrativeCallback = null;
+    }
+  },
+
+  // ========== MUSIC SYSTEM ==========
+
+  musicPlayer: null,
+  currentEraMusic: null,
+  musicEnabled: true,
+  musicVolume: 0.3,
+
+  initMusic() {
+    this.musicPlayer = new Audio();
+    this.musicPlayer.loop = true;
+    this.musicPlayer.volume = this.musicVolume;
+  },
+
+  playEraMusic(era) {
+    if (!this.musicEnabled || this.currentEraMusic === era) return;
+    this.currentEraMusic = era;
+    const track = ERA_MUSIC[era];
+    if (!track) return;
+    if (this.musicPlayer.src) {
+      this.fadeOutMusic(() => {
+        this.musicPlayer.src = track;
+        this.musicPlayer.play().catch(() => {});
+        this.fadeInMusic();
+      });
+    } else {
+      this.musicPlayer.src = track;
+      this.musicPlayer.play().catch(() => {});
+      this.fadeInMusic();
+    }
+  },
+
+  fadeOutMusic(callback) {
+    let vol = this.musicPlayer.volume;
+    const fade = setInterval(() => {
+      vol -= 0.05;
+      if (vol <= 0) {
+        clearInterval(fade);
+        this.musicPlayer.pause();
+        if (callback) callback();
+      } else {
+        this.musicPlayer.volume = vol;
+      }
+    }, 100);
+  },
+
+  fadeInMusic() {
+    this.musicPlayer.volume = 0;
+    let vol = 0;
+    const fade = setInterval(() => {
+      vol += 0.05;
+      if (vol >= this.musicVolume) {
+        clearInterval(fade);
+        this.musicPlayer.volume = this.musicVolume;
+      } else {
+        this.musicPlayer.volume = vol;
+      }
+    }, 100);
+  },
+
+  toggleMusic() {
+    this.musicEnabled = !this.musicEnabled;
+    const btn = document.getElementById('music-toggle');
+    if (!this.musicEnabled) {
+      this.musicPlayer.pause();
+      if (btn) btn.textContent = '\u{1F507}';
+    } else {
+      if (btn) btn.textContent = '\u{1F50A}';
+      if (this.currentEraMusic) {
+        this.currentEraMusic = null; // Reset so playEraMusic will re-trigger
+        this.playEraMusic(Game.state.players[0].era);
+      }
+    }
+  },
+
+  playVideo(src, callback) {
+    const overlay = document.getElementById('video-overlay');
+    const video = document.getElementById('game-video');
+    if (!overlay || !video) { if (callback) callback(); return; }
+    this._videoCallback = callback;
+    video.src = src;
+    overlay.classList.remove('hidden');
+    video.play().catch(() => { this.skipVideo(); });
+    video.onended = () => { this.skipVideo(); };
+    video.onerror = () => { this.skipVideo(); };
+  },
+
+  skipVideo() {
+    const overlay = document.getElementById('video-overlay');
+    const video = document.getElementById('game-video');
+    if (overlay) overlay.classList.add('hidden');
+    if (video) { video.pause(); video.src = ''; }
+    if (this._videoCallback) {
+      const cb = this._videoCallback;
+      this._videoCallback = null;
+      cb();
+    }
+  },
+
+  playIntroVideo(callback) {
+    this.playVideo('assets/video/intro.mp4', callback);
+  },
+
+  playEraVideo(era, callback) {
+    this.playVideo('assets/video/era/' + era + '.mp4', callback);
+  },
+
+  playWonderVideo(wonderId, callback) {
+    this.playVideo('assets/video/wonders/' + wonderId + '.mp4', callback);
   }
 };

@@ -989,6 +989,11 @@ const Game = {
           if (playerId === 0 && this.state.eraHistory) {
             this.state.eraHistory.push({turn: this.state.turn, era: tech.era});
             UI.narrateEvent('civilization entered the ' + tech.era + ' era');
+            UI.showEraIntro(tech.era);
+            UI.playEraMusic(tech.era);
+            if (typeof UI !== 'undefined' && UI.playEraVideo) {
+              UI.playEraVideo(tech.era);
+            }
           }
         }
         // Check for free tech from wonders
@@ -1129,6 +1134,9 @@ const Game = {
         }
         if (city.owner === 0) UI.notify(city.name + ' completed ' + q.name + '!');
         if (city.owner === 0) UI.narrateEvent(city.name + ' completed ' + q.name);
+        if (city.owner === 0 && typeof UI !== 'undefined' && UI.playWonderVideo) {
+          UI.playWonderVideo(q.id);
+        }
         // Free tech
         const w = WONDERS.find(w => w.id === q.id);
         if (w && w.freeTech) {
@@ -1918,6 +1926,9 @@ const Game = {
     // Check for idle cities and units
     UI.checkIdleNotifications();
 
+    // Random narrative event (10% chance per turn)
+    UI.showRandomEvent(this.state.players[0].era);
+
     Renderer.render();
     UI.updateTopBar();
     UI.updateRightPanel();
@@ -1931,7 +1942,7 @@ const Game = {
     if (allCapitals && this.state.players.length > 1) {
       this.state.gameOver = true;
       this.state.winner = 0;
-      UI.showVictory('Domination Victory! You have conquered all civilizations!');
+      UI.showVictory('Domination Victory! You have conquered all civilizations!', 'domination');
       return;
     }
 
@@ -1941,7 +1952,7 @@ const Game = {
         this.state.gameOver = true;
         this.state.winner = parseInt(pid);
         const winner = this.state.players[parseInt(pid)];
-        UI.showVictory(winner.name + ' wins by Mars Race! 3 shuttles launched!');
+        UI.showVictory(winner.name + ' wins by Mars Race! 3 shuttles launched!', parseInt(pid) === 0 ? 'mars' : undefined);
         return;
       }
     }
@@ -1956,7 +1967,7 @@ const Game = {
         if (score > bestScore) { bestScore = score; best = p; }
       }
       this.state.winner = best ? best.id : 0;
-      UI.showVictory((best ? best.name : 'Unknown') + ' wins by Score! (' + bestScore + ' points)');
+      UI.showVictory((best ? best.name : 'Unknown') + ' wins by Score! (' + bestScore + ' points)', this.state.winner === 0 ? 'score' : undefined);
     }
   },
 

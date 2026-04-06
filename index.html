@@ -95,6 +95,7 @@
         <span id="era-display">Caveman Era</span>
       </div>
       <div class="top-buttons">
+        <button id="music-toggle" class="btn-sm" onclick="UI.toggleMusic()" title="Toggle Music">🔊</button>
         <select id="city-jump-select" class="city-jump-dropdown" onchange="UI.jumpToCity(this.value)" title="Jump to City">
           <option value="">🏛 Cities</option>
         </select>
@@ -189,6 +190,16 @@
     <!-- Resource Tooltip -->
     <div id="resource-tooltip" class="resource-tooltip hidden"></div>
 
+    <!-- Narrative Overlay -->
+    <div id="narrative-overlay" class="hidden">
+      <div id="narrative-content">
+        <h1 id="narrative-title"></h1>
+        <p id="narrative-subtitle"></p>
+        <p id="narrative-text"></p>
+        <button id="narrative-dismiss" onclick="UI.closeNarrative()">Continue</button>
+      </div>
+    </div>
+
     <!-- Dialogue Overlay -->
     <div id="dialogue-overlay" class="hidden">
       <div id="dialogue-box">
@@ -200,6 +211,12 @@
         </div>
         <button id="dialogue-close" onclick="UI.closeDialogue()">&times;</button>
       </div>
+    </div>
+
+    <!-- Video Overlay -->
+    <div id="video-overlay" class="hidden">
+      <video id="game-video" preload="none"></video>
+      <button id="video-skip" onclick="UI.skipVideo()">Skip ▶</button>
     </div>
   </div>
 </div>
