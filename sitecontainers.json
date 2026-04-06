@@ -1,0 +1,24 @@
+[
+  {
+    "name": "main",
+    "properties": {
+      "image": "tileforgeacr.azurecr.io/tileforge-main:latest",
+      "targetPort": "8080",
+      "isMain": true,
+      "environmentVariables": [
+        {
+          "name": "PHI_URL",
+          "value": "APPSETTING_PHI_URL"
+        }
+      ]
+    }
+  },
+  {
+    "name": "phi",
+    "properties": {
+      "image": "tileforgeacr.azurecr.io/phi-sidecar:latest",
+      "targetPort": "8000",
+      "isMain": false
+    }
+  }
+]

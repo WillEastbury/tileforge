@@ -1317,16 +1317,193 @@ const UI = {
       const scoreColor = score > 0 ? 'var(--green)' : score < 0 ? 'var(--red)' : 'var(--text-dim)';
       html += `<div class="diplo-row">
         <span class="diplo-color-swatch" style="background:${other.color}"></span>
-        <span class="diplo-name">${other.name}</span>
+        <span class="diplo-name" style="cursor:pointer;text-decoration:underline" onclick="UI.diplomacyGreet(${i})">${other.name}</span>
         <span class="diplo-score" style="color:${scoreColor}">${score > 0 ? '+' : ''}${score}</span>
         <span class="diplo-status" style="color:${atWar ? 'var(--red)' : 'var(--green)'}">${atWar ? '⚔️ War' : '☮️ Peace'}</span>
         <span class="diplo-actions">
-          ${!atWar ? `<button class="btn-sm diplo-btn-war" onclick="Game.declareWar(0,${i});UI.renderDiplomacy()">Declare War</button>` : ''}
-          ${atWar && (rel.warTurns || 0) >= 10 ? `<button class="btn-sm diplo-btn-peace" onclick="Game.makePeace(0,${i});UI.renderDiplomacy()">Make Peace</button>` : ''}
+          ${!atWar ? `<button class="btn-sm diplo-btn-war" onclick="UI.diplomacyDeclareWar(${i})">Declare War</button>` : ''}
+          ${atWar && (rel.warTurns || 0) >= 10 ? `<button class="btn-sm diplo-btn-peace" onclick="UI.diplomacyMakePeace(${i})">Make Peace</button>` : ''}
         </span>
       </div>`;
     }
     if (!html) html = '<p style="color:var(--text-dim);text-align:center">No other civilizations discovered.</p>';
     document.getElementById('diplomacy-content').innerHTML = html;
+  },
+
+  // ========== DIALOGUE SYSTEM ==========
+
+  FALLBACK_RESPONSES: {
+    greet: {
+      Caesar: 'Rome greets you.', Cleopatra: 'Welcome, traveler.', Genghis: 'Speak quickly.',
+      Victoria: 'Good day to you.', Montezuma: 'The gods watch us.', Bismarck: 'State your business.',
+      Tokugawa: 'Honor demands respect.', Catherine: 'What brings you here?', _default: 'Greetings.'
+    },
+    war_declaration: {
+      Caesar: 'Rome will crush you!', Cleopatra: 'You will regret this, fool.', Genghis: 'Your cities will burn!',
+      Victoria: 'The Empire strikes without mercy.', Montezuma: 'Blood will flow!', Bismarck: 'Prepare for total war.',
+      Tokugawa: 'You face the fury of the samurai!', Catherine: 'Russia will bury you.', _default: 'Prepare for war!'
+    },
+    peace_offer: {
+      Caesar: 'Perhaps we can negotiate...', Cleopatra: 'Let us end this bloodshed.', Genghis: 'You wish to surrender?',
+      Victoria: 'Terms may be discussed.', Montezuma: 'The gods may allow it.', Bismarck: 'A pragmatic choice.',
+      Tokugawa: 'Peace has its own honor.', Catherine: 'Very well, let us talk.', _default: 'Perhaps we can find peace.'
+    }
+  },
+
+  _getFallback(action, leaderName) {
+    const pool = this.FALLBACK_RESPONSES[action] || this.FALLBACK_RESPONSES.greet;
+    return pool[leaderName] || pool._default;
+  },
+
+  showDialogue(leader, text, options) {
+    const overlay = document.getElementById('dialogue-overlay');
+    const portrait = document.getElementById('dialogue-portrait');
+    const nameEl = document.getElementById('dialogue-name');
+    const textEl = document.getElementById('dialogue-text');
+    const actionsEl = document.getElementById('dialogue-actions');
+
+    // Portrait: colored square with leader initial
+    const player = Game.state ? Game.state.players.find(p => p.name === leader) : null;
+    const color = player ? player.color : '#556';
+    portrait.style.background = `linear-gradient(135deg, ${color}, ${color}88)`;
+    portrait.textContent = leader ? leader.charAt(0).toUpperCase() : '?';
+
+    nameEl.textContent = leader || 'Unknown';
+
+    if (text === null) {
+      textEl.innerHTML = '<span class="dlg-loading">Thinking</span>';
+    } else {
+      textEl.textContent = text;
+    }
+
+    actionsEl.innerHTML = '';
+    if (options && options.length) {
+      for (const opt of options) {
+        const btn = document.createElement('button');
+        btn.textContent = opt.label;
+        if (opt.danger) btn.classList.add('dlg-btn-danger');
+        btn.addEventListener('click', () => { this.closeDialogue(); if (opt.action) opt.action(); });
+        actionsEl.appendChild(btn);
+      }
+    }
+
+    overlay.classList.remove('hidden');
+  },
+
+  closeDialogue() {
+    document.getElementById('dialogue-overlay').classList.add('hidden');
+  },
+
+  _updateDialogueText(text) {
+    const textEl = document.getElementById('dialogue-text');
+    if (textEl) textEl.textContent = text;
+  },
+
+  async _fetchWithTimeout(url, body, timeoutMs) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+      clearTimeout(timer);
+      const data = await resp.json();
+      if (data.error) return null;
+      return data.response;
+    } catch {
+      clearTimeout(timer);
+      return null;
+    }
+  },
+
+  async requestDiplomacyDialogue(playerId, action) {
+    const player = Game.state.players[playerId];
+    const human = Game.state.players[0];
+    Game.initRelations(0, playerId);
+    const relation = human.relations[playerId] ? human.relations[playerId].score : 0;
+    const context = `Turn ${Game.state.turn}, Year ${Game.getYearString()}, ${player.cities.length} cities, relation score ${relation}`;
+    const result = await this._fetchWithTimeout('/api/chat', {
+      leader: player.name, context, action, relation, player_name: human.name
+    }, 10000);
+    return result || this._getFallback(action, player.name);
+  },
+
+  async requestNarration(event) {
+    const context = Game.state
+      ? `Turn ${Game.state.turn}, Year ${Game.getYearString()}, Era: ${Game.state.players[0].era || 'caveman'}`
+      : '';
+    const result = await this._fetchWithTimeout('/api/narrate', {event, context}, 10000);
+    return result || event;
+  },
+
+  // Show narration as a styled notification
+  showNarration(text) {
+    const container = document.getElementById('notifications');
+    const el = document.createElement('div');
+    el.className = 'notification narration-notif';
+    el.textContent = '📜 ' + text;
+    container.appendChild(el);
+    setTimeout(() => el.remove(), 8000);
+  },
+
+  // Fire-and-forget narration for game events
+  narrateEvent(event) {
+    this.requestNarration(event).then(text => this.showNarration(text));
+  },
+
+  // ========== DIPLOMACY DIALOGUE INTEGRATION ==========
+
+  async diplomacyGreet(playerId) {
+    const player = Game.state.players[playerId];
+    this.showDialogue(player.name, null, []);
+    const text = await this.requestDiplomacyDialogue(playerId, 'greet');
+    this._updateDialogueText(text);
+  },
+
+  async diplomacyDeclareWar(playerId) {
+    const player = Game.state.players[playerId];
+    this.showDialogue(player.name, null, []);
+    const text = await this.requestDiplomacyDialogue(playerId, 'war_declaration');
+    this._updateDialogueText(text);
+    const actionsEl = document.getElementById('dialogue-actions');
+    actionsEl.innerHTML = '';
+    const confirmBtn = document.createElement('button');
+    confirmBtn.textContent = 'Declare War';
+    confirmBtn.classList.add('dlg-btn-danger');
+    confirmBtn.addEventListener('click', () => {
+      this.closeDialogue();
+      Game.declareWar(0, playerId);
+      this.renderDiplomacy();
+    });
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Stand Down';
+    cancelBtn.addEventListener('click', () => this.closeDialogue());
+    actionsEl.appendChild(confirmBtn);
+    actionsEl.appendChild(cancelBtn);
+  },
+
+  async diplomacyMakePeace(playerId) {
+    const player = Game.state.players[playerId];
+    this.showDialogue(player.name, null, []);
+    const text = await this.requestDiplomacyDialogue(playerId, 'peace_offer');
+    this._updateDialogueText(text);
+    const actionsEl = document.getElementById('dialogue-actions');
+    actionsEl.innerHTML = '';
+    const acceptBtn = document.createElement('button');
+    acceptBtn.textContent = 'Accept Peace';
+    acceptBtn.addEventListener('click', () => {
+      this.closeDialogue();
+      Game.makePeace(0, playerId);
+      this.renderDiplomacy();
+    });
+    const refuseBtn = document.createElement('button');
+    refuseBtn.textContent = 'Refuse';
+    refuseBtn.classList.add('dlg-btn-danger');
+    refuseBtn.addEventListener('click', () => this.closeDialogue());
+    actionsEl.appendChild(acceptBtn);
+    actionsEl.appendChild(refuseBtn);
   }
 };

@@ -988,6 +988,7 @@ const Game = {
           p.era = tech.era;
           if (playerId === 0 && this.state.eraHistory) {
             this.state.eraHistory.push({turn: this.state.turn, era: tech.era});
+            UI.narrateEvent('civilization entered the ' + tech.era + ' era');
           }
         }
         // Check for free tech from wonders
@@ -1127,6 +1128,7 @@ const Game = {
           city.buildings.push('wonder_' + q.id);
         }
         if (city.owner === 0) UI.notify(city.name + ' completed ' + q.name + '!');
+        if (city.owner === 0) UI.narrateEvent(city.name + ' completed ' + q.name);
         // Free tech
         const w = WONDERS.find(w => w.id === q.id);
         if (w && w.freeTech) {
@@ -1315,6 +1317,7 @@ const Game = {
       this.state.goldenAge[playerId] = {turnsLeft: duration};
     }
     if (playerId === 0) UI.notify('A Golden Age has begun! (+50% Gold & Production for ' + duration + ' turns)');
+    if (playerId === 0) UI.narrateEvent('A golden age has begun');
   },
 
   // ========== GREAT PEOPLE ==========
@@ -1573,7 +1576,14 @@ const Game = {
     this.state.players[otherPlayerId].relations[playerId].atWar = true;
     this.modifyRelation(playerId, otherPlayerId, -50);
     if (playerId === 0) UI.notify('You declared war on ' + this.state.players[otherPlayerId].name + '!');
-    else if (otherPlayerId === 0) UI.notify(this.state.players[playerId].name + ' declared war on you!');
+    else if (otherPlayerId === 0) {
+      UI.notify(this.state.players[playerId].name + ' declared war on you!');
+      UI.requestDiplomacyDialogue(playerId, 'war_declaration').then(text => {
+        UI.showDialogue(this.state.players[playerId].name, text, [
+          {label: 'Bring it on!', action: null}
+        ]);
+      });
+    }
   },
 
   makePeace(playerId, otherPlayerId) {
