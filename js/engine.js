@@ -11,9 +11,31 @@ const Game = {
 
   START_YEAR: -3000, // 3000 BC
 
+  // Era-based year steps: ~400 turns spans 3000 BC → 2100 AD
+  ERA_YEAR_STEPS: {
+    caveman: 40, ancient: 25, classical: 20, medieval: 15,
+    renaissance: 10, industrial: 5, modern: 2, ai: 1, mars: 1
+  },
+
   getYear() {
     if (!this.state) return this.START_YEAR;
-    return this.START_YEAR + this.state.turn;
+    let year = this.START_YEAR;
+    for (let t = 0; t < this.state.turn; t++) {
+      const era = this.getEraAtTurn(t);
+      year += this.ERA_YEAR_STEPS[era] || 1;
+    }
+    return year;
+  },
+
+  // Determine which era the human player was in at a given turn
+  getEraAtTurn(turn) {
+    if (!this.state || !this.state.eraHistory) return 'caveman';
+    let era = 'caveman';
+    for (const entry of this.state.eraHistory) {
+      if (entry.turn <= turn) era = entry.era;
+      else break;
+    }
+    return era;
   },
 
   getYearString() {
@@ -40,7 +62,9 @@ const Game = {
       builtWonders: {}, // wonderId -> playerId
       gameOver: false,
       winner: null,
-      marsShuttles: {} // playerId -> count
+      marsShuttles: {}, // playerId -> count
+      eraHistory: [{turn: 0, era: 'caveman'}], // track era transitions for year calc
+      goldenAge: {} // playerId -> {turnsLeft}
     };
 
     // Build map
@@ -98,7 +122,14 @@ const Game = {
       resMod: isAI ? diff.aiRes : diff.pRes,
       devMod: isAI ? diff.aiDev : diff.pDev,
       combatMod: isAI ? diff.aiCombat : 1.0,
-      strategicRes: {} // resourceId -> count
+      strategicRes: {}, // resourceId -> count
+      cultureAccum: {}, // cityId -> accumulated culture for border expansion
+      greatPeoplePoints: {scientist:0, engineer:0, artist:0, general:0, merchant:0, prophet:0},
+      greatPeopleThreshold: 100, // increases each time a GP spawns
+      faith: 0,
+      pantheon: null,
+      religion: null,
+      relations: {} // playerId -> {score, treaties: Set}
     };
   },
 
@@ -478,6 +509,16 @@ const Game = {
     // Science from population
     sci += Math.floor(city.population * 0.5);
 
+    // City specialization bonuses
+    const spec = this.getCitySpecialization(city);
+    if (spec.bonuses) {
+      if (spec.bonuses.goldMod) goldMod += spec.bonuses.goldMod;
+      if (spec.bonuses.sciMod) sciMod += spec.bonuses.sciMod;
+      if (spec.bonuses.prodMod) prodMod += spec.bonuses.prodMod;
+      if (spec.bonuses.culMod) culMod += spec.bonuses.culMod;
+      if (spec.bonuses.growthMod) growthMod += spec.bonuses.growthMod;
+    }
+
     // Apply modifiers
     gold = Math.floor(gold * (1 + goldMod + allMod) * p.resMod);
     sci = Math.floor(sci * (1 + sciMod + allMod) * p.resMod);
@@ -485,7 +526,7 @@ const Game = {
     cul = Math.floor(cul * (1 + culMod + allMod) * p.resMod);
     food = Math.floor(food * (1 + allMod) * p.resMod);
 
-    return {food, prod, gold, sci, cul, hist, growthMod, defBonus};
+    return {food, prod, gold, sci, cul, hist, growthMod, defBonus, spec};
   },
 
   getWorkedTiles(city, radius) {
@@ -571,6 +612,8 @@ const Game = {
     if (uType.type === 'recon') return 1; // Scouts ignore terrain
     const tile = this.getTile(tr, tc);
     const terrain = TERRAINS[tile.terrain];
+    // Roads reduce movement cost to 0.5 for land units
+    if (tile.road && uType.domain === 'land') return 0.5;
     return terrain.mv;
   },
 
@@ -695,6 +738,16 @@ const Game = {
     let aStr = aType.str * (attacker.hp / 100) * aPlayer.combatMod;
     let dStr = dType.str * (defender.hp / 100) * dPlayer.combatMod;
 
+    // Promotion bonuses
+    const aPromos = this.getPromotionBonuses(attacker);
+    const dPromos = this.getPromotionBonuses(defender);
+    aStr *= (1 + aPromos.strMod);
+    dStr *= (1 + dPromos.defMod);
+
+    // Supply line penalty (-25% strength when out of supply)
+    if (attacker.outOfSupply) aStr *= 0.75;
+    if (defender.outOfSupply) dStr *= 0.75;
+
     // Terrain defense bonus
     const dTerrain = TERRAINS[this.mapData[defender.r][defender.c].terrain];
     dStr *= (1 + dTerrain.def / 100);
@@ -733,6 +786,8 @@ const Game = {
 
     // Check deaths
     if (defender.hp <= 0) {
+      // Heal on kill promotion
+      if (aPromos.healOnKill) attacker.hp = Math.min(100, attacker.hp + 30);
       this.killUnit(defender);
       // Move attacker to defender's position if melee
       if (aType.rng === 0 || this.tileDist(attacker.r, attacker.c, defender.r, defender.c) <= 1.5) {
@@ -745,6 +800,10 @@ const Game = {
       const tile = this.getTile(attacker.r, attacker.c);
       if (tile.cityId && tile.owner !== attacker.owner) {
         this.captureCity(attacker, tile);
+      }
+      // Check for promotion availability
+      if (attacker.owner === 0 && this.getAvailablePromotions(attacker).length > 0) {
+        UI.notify('Unit ready for promotion!');
       }
       return {result: 'attacker_wins', aDmg: 0, dDmg: 0};
     }
@@ -843,9 +902,13 @@ const Game = {
         city.food = 0;
       }
 
-      // Production (build queue)
+      // Production (build queue) — golden age gives +50%
       if (city.buildQueue) {
-        city.buildQueue.progress += Math.floor(yields.prod * p.devMod);
+        let prodAmount = Math.floor(yields.prod * p.devMod);
+        if (this.state.goldenAge && this.state.goldenAge[city.owner] && this.state.goldenAge[city.owner].turnsLeft > 0) {
+          prodAmount = Math.floor(prodAmount * 1.5);
+        }
+        city.buildQueue.progress += prodAmount;
         if (city.buildQueue.progress >= city.buildQueue.cost) {
           this.completeBuild(city);
         }
@@ -870,10 +933,15 @@ const Game = {
       city.maxHp = 100 + city.population * 10;
       if (city.hp < city.maxHp) city.hp = Math.min(city.maxHp, city.hp + 5); // heal
 
+    // Happiness effects on yields
+      const happinessMod = city.happiness < 0
+        ? Math.max(-0.5, city.happiness * 0.1) // -10% per unhappy point, floor at -50%
+        : Math.min(0.25, city.happiness * 0.02); // +2% per happy point, cap at +25%
+
       // Accumulate
-      totalGold += yields.gold;
-      totalSci += yields.sci;
-      totalCul += yields.cul;
+      totalGold += Math.floor(yields.gold * (1 + happinessMod));
+      totalSci += Math.floor(yields.sci * (1 + happinessMod));
+      totalCul += Math.floor(yields.cul * (1 + happinessMod));
     }
 
     // Unit maintenance
@@ -882,6 +950,10 @@ const Game = {
       return ut.str > 0;
     }).length;
     totalGold -= unitMaint;
+
+    // Golden age gold bonus
+    const isGoldenAge = this.state.goldenAge && this.state.goldenAge[playerId] && this.state.goldenAge[playerId].turnsLeft > 0;
+    if (isGoldenAge) totalGold = Math.floor(totalGold * 1.5);
 
     p.gold += totalGold;
     p.totalScience += totalSci;
@@ -899,7 +971,12 @@ const Game = {
         // Update era
         const eraIdx = ERAS.indexOf(tech.era);
         const currentEraIdx = ERAS.indexOf(p.era);
-        if (eraIdx > currentEraIdx) p.era = tech.era;
+        if (eraIdx > currentEraIdx) {
+          p.era = tech.era;
+          if (playerId === 0 && this.state.eraHistory) {
+            this.state.eraHistory.push({turn: this.state.turn, era: tech.era});
+          }
+        }
         // Check for free tech from wonders
         // Auto-select next research for AI
         if (p.isAI) AI.chooseResearch(p);
@@ -908,15 +985,100 @@ const Game = {
       AI.chooseResearch(p);
     }
 
-    // Heal units in friendly territory
+    // Heal units in friendly territory + supply line check
     for (const unit of p.units) {
       const tile = this.getTile(unit.r, unit.c);
-      if (tile.owner === playerId && unit.hp < 100) {
-        unit.hp = Math.min(100, unit.hp + 10);
-      } else if (unit.hp < 100) {
-        unit.hp = Math.min(100, unit.hp + 5);
+      const inSupply = this.isInSupplyRange(unit, playerId);
+      if (!inSupply) {
+        unit.outOfSupply = true;
+        if (unit.hp < 100) unit.hp = Math.min(100, unit.hp + 0); // no healing
+      } else {
+        unit.outOfSupply = false;
+        if (tile.owner === playerId && unit.hp < 100) {
+          unit.hp = Math.min(100, unit.hp + 10);
+        } else if (unit.hp < 100) {
+          unit.hp = Math.min(100, unit.hp + 5);
+        }
       }
     }
+
+    // Culture-driven border expansion
+    for (const city of p.cities) {
+      if (!p.cultureAccum) p.cultureAccum = {};
+      if (!p.cultureAccum[city.id]) p.cultureAccum[city.id] = 0;
+      const yields = this.getCityYields(city);
+      p.cultureAccum[city.id] += yields.cul;
+      const expansionCost = 15 * Math.pow(1.5, (city.borderExpansions || 0));
+      if (p.cultureAccum[city.id] >= expansionCost) {
+        const claimed = this.expandBorders(city, playerId);
+        if (claimed) {
+          p.cultureAccum[city.id] -= expansionCost;
+          city.borderExpansions = (city.borderExpansions || 0) + 1;
+          if (playerId === 0) UI.notify(city.name + ' expanded its borders!');
+        }
+      }
+    }
+
+    // Golden age processing
+    if (this.state.goldenAge && this.state.goldenAge[playerId]) {
+      const ga = this.state.goldenAge[playerId];
+      if (ga.turnsLeft > 0) {
+        ga.turnsLeft--;
+        if (ga.turnsLeft <= 0) {
+          delete this.state.goldenAge[playerId];
+          if (playerId === 0) UI.notify('Golden Age has ended.');
+        }
+      }
+    }
+
+    // Great People point accumulation
+    if (p.greatPeoplePoints) {
+      for (const city of p.cities) {
+        for (const bId of city.buildings) {
+          const b = BUILDINGS.find(b => b.id === bId);
+          if (!b) continue;
+          if (b.sci > 2) p.greatPeoplePoints.scientist += 0.5;
+          if (b.prod > 2) p.greatPeoplePoints.engineer += 0.5;
+          if (b.cul > 2) p.greatPeoplePoints.artist += 0.5;
+          if (b.gold > 2) p.greatPeoplePoints.merchant += 0.5;
+        }
+      }
+      // Check for Great Person spawn
+      for (const [type, points] of Object.entries(p.greatPeoplePoints)) {
+        if (points >= p.greatPeopleThreshold) {
+          p.greatPeoplePoints[type] -= p.greatPeopleThreshold;
+          p.greatPeopleThreshold = Math.floor(p.greatPeopleThreshold * 1.5);
+          this.spawnGreatPerson(playerId, type);
+        }
+      }
+    }
+
+    // Revolt check (very unhappy cities)
+    for (const city of p.cities) {
+      if (city.happiness <= -10) {
+        // Guaranteed revolt — lose city to rebels
+        if (playerId === 0) UI.notify(city.name + ' has revolted!');
+        city.population = Math.max(1, Math.floor(city.population / 2));
+        city.happiness = 0;
+      } else if (city.happiness <= -5 && Math.random() < 0.15) {
+        // 15% chance of revolt
+        if (playerId === 0) UI.notify('Unrest in ' + city.name + '! Citizens are rioting!');
+        city.population = Math.max(1, city.population - 1);
+        city.happiness += 2;
+      }
+    }
+
+    // Legacy building conversion
+    this.processLegacyBuildings(p);
+
+    // Trade routes
+    this.processTradeRoutes(playerId);
+
+    // Sports & entertainment
+    this.processSports(playerId);
+
+    // Religion & faith
+    this.processFaith(playerId);
 
     // Check bankruptcy
     if (p.gold < -50) {
@@ -961,6 +1123,10 @@ const Game = {
             p.techs.add(freeTech.id);
             if (city.owner === 0) UI.notify('Free tech: ' + freeTech.name);
           }
+        }
+        // Golden age from wonders (e.g. Taj Mahal)
+        if (w && w.goldenAge) {
+          this.triggerGoldenAge(city.owner, 10);
         }
       } else {
         // Another player already built it — refund
@@ -1072,6 +1238,571 @@ const Game = {
     city.buildQueue = {type, id, name, progress: 0, cost};
   },
 
+  // ========== SUPPLY LINES ==========
+
+  isInSupplyRange(unit, playerId) {
+    const p = this.state.players[playerId];
+    const maxRange = 8; // base supply range in tiles
+    for (const city of p.cities) {
+      const dist = this.tileDistance(unit.r, unit.c, city.r, city.c);
+      // Roads extend supply range
+      if (dist <= maxRange) return true;
+    }
+    return false;
+  },
+
+  tileDistance(r1, c1, r2, c2) {
+    const dr = Math.abs(r1 - r2);
+    const dc = Math.abs(c1 - c2);
+    const mapW = this.state.mapWidth;
+    const wrappedDc = Math.min(dc, mapW - dc);
+    return Math.max(dr, wrappedDc);
+  },
+
+  // ========== BORDER EXPANSION ==========
+
+  expandBorders(city, playerId) {
+    const tier = this.getCityTier(city.population);
+    const maxRadius = CITY_TIERS[tier].radius + 1;
+    let bestTile = null, bestDist = Infinity;
+
+    // Find closest unclaimed tile within range
+    for (let dr = -maxRadius; dr <= maxRadius; dr++) {
+      for (let dc = -maxRadius; dc <= maxRadius; dc++) {
+        const nr = city.r + dr;
+        const nc = (city.c + dc + this.state.mapWidth) % this.state.mapWidth;
+        if (nr < 0 || nr >= this.state.mapHeight) continue;
+        const tile = this.getTile(nr, nc);
+        if (tile && tile.owner === -1) {
+          const dist = Math.abs(dr) + Math.abs(dc);
+          if (dist < bestDist) {
+            bestDist = dist;
+            bestTile = {r: nr, c: nc};
+          }
+        }
+      }
+    }
+    if (bestTile) {
+      const tile = this.getTile(bestTile.r, bestTile.c);
+      tile.owner = playerId;
+      tile.cityId = city.id;
+      return true;
+    }
+    return false;
+  },
+
+  // ========== GOLDEN AGES ==========
+
+  triggerGoldenAge(playerId, duration) {
+    if (!this.state.goldenAge) this.state.goldenAge = {};
+    const existing = this.state.goldenAge[playerId];
+    if (existing && existing.turnsLeft > 0) {
+      existing.turnsLeft += duration; // extend
+    } else {
+      this.state.goldenAge[playerId] = {turnsLeft: duration};
+    }
+    if (playerId === 0) UI.notify('A Golden Age has begun! (+50% Gold & Production for ' + duration + ' turns)');
+  },
+
+  // ========== GREAT PEOPLE ==========
+
+  spawnGreatPerson(playerId, type) {
+    const p = this.state.players[playerId];
+    if (p.cities.length === 0) return;
+    const capital = p.cities[0];
+
+    // Apply immediate effect based on type
+    switch (type) {
+      case 'scientist':
+        // Free tech boost — add 50% of current research cost
+        if (p.currentResearch) {
+          const tech = TECHS.find(t => t.id === p.currentResearch);
+          if (tech) p.researchProgress += Math.floor(tech.cost * 0.5);
+        } else {
+          p.totalScience += 200;
+        }
+        if (playerId === 0) UI.notify('A Great Scientist appears! Research boosted.');
+        break;
+      case 'engineer':
+        // Production rush — complete current build in capital
+        if (capital.buildQueue) {
+          capital.buildQueue.progress = capital.buildQueue.cost;
+          this.completeBuild(capital);
+        } else {
+          p.gold += 200;
+        }
+        if (playerId === 0) UI.notify('A Great Engineer appears! Build completed in ' + capital.name + '.');
+        break;
+      case 'artist':
+        // Golden age
+        this.triggerGoldenAge(playerId, 10);
+        if (playerId === 0) UI.notify('A Great Artist appears! Golden Age triggered.');
+        break;
+      case 'general':
+        // Buff all units
+        for (const u of p.units) u.hp = 100;
+        if (playerId === 0) UI.notify('A Great General appears! All units fully healed.');
+        break;
+      case 'merchant':
+        p.gold += 500;
+        if (playerId === 0) UI.notify('A Great Merchant appears! +500 Gold.');
+        break;
+      case 'prophet':
+        p.faith = (p.faith || 0) + 100;
+        if (playerId === 0) UI.notify('A Great Prophet appears! +100 Faith.');
+        break;
+    }
+  },
+
+  // ========== LEGACY BUILDINGS ==========
+
+  processLegacyBuildings(player) {
+    const playerEraIdx = ERAS.indexOf(player.era);
+    let historyGain = 0, legacyGold = 0;
+
+    for (const city of player.cities) {
+      if (!city.legacyBuildings) city.legacyBuildings = [];
+      const toConvert = [];
+
+      for (const bId of city.buildings) {
+        const b = BUILDINGS.find(b => b.id === bId);
+        if (!b || !b.era) continue;
+        const buildingEraIdx = ERAS.indexOf(b.era);
+        // Building becomes legacy when player is 2+ eras ahead
+        if (playerEraIdx - buildingEraIdx >= 2 && !city.legacyBuildings.includes(bId)) {
+          toConvert.push(bId);
+        }
+      }
+
+      for (const bId of toConvert) {
+        city.legacyBuildings.push(bId);
+        const b = BUILDINGS.find(b => b.id === bId);
+        if (!b) continue;
+        const eraDist = playerEraIdx - ERAS.indexOf(b.era);
+        const scale = Math.min(3.0, 1.0 + (eraDist - 2) * 0.5);
+        historyGain += Math.floor(2 * scale);
+        legacyGold += Math.floor(1 * scale);
+      }
+
+      // Ongoing legacy yields
+      for (const bId of city.legacyBuildings) {
+        const b = BUILDINGS.find(b => b.id === bId);
+        if (!b) continue;
+        const eraDist = playerEraIdx - ERAS.indexOf(b.era);
+        const scale = Math.min(3.0, 1.0 + (eraDist - 2) * 0.5);
+        historyGain += Math.floor(1 * scale);
+        legacyGold += Math.floor(0.5 * scale);
+      }
+    }
+    player.totalHistory = (player.totalHistory || 0) + historyGain;
+    player.gold += legacyGold;
+  },
+
+  // ========== PROMOTIONS ==========
+
+  PROMOTION_THRESHOLDS: [10, 30, 60, 100, 150],
+
+  PROMOTIONS: [
+    {id: 'shock', name: 'Shock', desc: '+25% vs melee', strBonus: 0, strMod: 0.25, domain: 'land'},
+    {id: 'drill', name: 'Drill', desc: '+1 Movement', mvBonus: 1, domain: 'land'},
+    {id: 'cover', name: 'Cover', desc: '+25% vs ranged', defBonus: 0.25, domain: 'land'},
+    {id: 'medic', name: 'Medic', desc: 'Heal on kill', healOnKill: true, domain: 'land'},
+    {id: 'accuracy', name: 'Accuracy', desc: '+1 Range', rangeBonus: 1, domain: 'land'},
+    {id: 'blitz', name: 'Blitz', desc: 'Attack twice', extraAttack: true, domain: 'land'},
+    {id: 'ironclad', name: 'Ironclad', desc: '+25% defense', defBonus: 0.25, domain: 'sea'},
+    {id: 'boarding', name: 'Boarding Party', desc: '+25% attack', strMod: 0.25, domain: 'sea'},
+  ],
+
+  getUnitLevel(unit) {
+    let level = 0;
+    for (const threshold of this.PROMOTION_THRESHOLDS) {
+      if ((unit.xp || 0) >= threshold) level++;
+      else break;
+    }
+    return level;
+  },
+
+  getAvailablePromotions(unit) {
+    const level = this.getUnitLevel(unit);
+    const promotionCount = (unit.promotions || []).length;
+    if (promotionCount >= level) return []; // already promoted up to level
+    const uType = this.getUnitType(unit);
+    return this.PROMOTIONS.filter(p =>
+      (p.domain === uType.domain || p.domain === 'any') &&
+      !(unit.promotions || []).includes(p.id)
+    );
+  },
+
+  applyPromotion(unit, promotionId) {
+    if (!unit.promotions) unit.promotions = [];
+    if (unit.promotions.includes(promotionId)) return false;
+    unit.promotions.push(promotionId);
+    const promo = this.PROMOTIONS.find(p => p.id === promotionId);
+    if (promo && promo.mvBonus) {
+      const uType = this.getUnitType(unit);
+      unit.movementLeft = (unit.movementLeft || 0) + promo.mvBonus;
+    }
+    return true;
+  },
+
+  getPromotionBonuses(unit) {
+    let strMod = 0, defMod = 0, mvBonus = 0, rangeBonus = 0, healOnKill = false, extraAttack = false;
+    for (const pid of (unit.promotions || [])) {
+      const p = this.PROMOTIONS.find(p => p.id === pid);
+      if (!p) continue;
+      if (p.strMod) strMod += p.strMod;
+      if (p.defBonus) defMod += p.defBonus;
+      if (p.mvBonus) mvBonus += p.mvBonus;
+      if (p.rangeBonus) rangeBonus += p.rangeBonus;
+      if (p.healOnKill) healOnKill = true;
+      if (p.extraAttack) extraAttack = true;
+    }
+    return {strMod, defMod, mvBonus, rangeBonus, healOnKill, extraAttack};
+  },
+
+  // ========== ROAD NETWORK & RESOURCE CONNECTION ==========
+
+  isResourceConnected(tileR, tileC, playerId) {
+    const tile = this.getTile(tileR, tileC);
+    if (!tile || !tile.improvement || !tile.resource) return false;
+    if (tile.owner !== playerId) return false;
+    // BFS from tile along roads to find a city owned by player
+    return this.hasRoadPathToCity(tileR, tileC, playerId);
+  },
+
+  hasRoadPathToCity(startR, startC, playerId) {
+    const visited = new Set();
+    const queue = [{r: startR, c: startC}];
+    visited.add(startR + ',' + startC);
+
+    while (queue.length > 0) {
+      const {r, c} = queue.shift();
+      const tile = this.getTile(r, c);
+      // Check if this tile has a city owned by the player
+      const p = this.state.players[playerId];
+      for (const city of p.cities) {
+        if (city.r === r && city.c === c) return true;
+      }
+      // Only traverse roads
+      if (r !== startR || c !== startC) {
+        if (!tile.road) continue;
+      }
+      // Expand neighbors
+      const neighbors = this.getNeighbors(r, c);
+      for (const n of neighbors) {
+        const key = n.r + ',' + n.c;
+        if (!visited.has(key)) {
+          visited.add(key);
+          const nTile = this.getTile(n.r, n.c);
+          if (nTile && nTile.owner === playerId) {
+            queue.push(n);
+          }
+        }
+      }
+    }
+    return false;
+  },
+
+  getConnectedResources(playerId) {
+    const connected = new Set();
+    const p = this.state.players[playerId];
+    for (const city of p.cities) {
+      const tier = this.getCityTier(city.population);
+      const radius = CITY_TIERS[tier].radius;
+      const tiles = this.getWorkedTiles(city, radius + 1);
+      for (const wt of tiles) {
+        const tile = this.getTile(wt.r, wt.c);
+        if (tile && tile.resource && tile.improvement && tile.owner === playerId) {
+          // Connected if road path exists OR directly adjacent to city
+          const dist = this.tileDistance(wt.r, wt.c, city.r, city.c);
+          if (dist <= 1 || this.hasRoadPathToCity(wt.r, wt.c, playerId)) {
+            connected.add(tile.resource.id || tile.resource.name);
+          }
+        }
+      }
+    }
+    return connected;
+  },
+
+  // ========== COMPOSITE RESOURCES ==========
+
+  canProduceComposite(compositeId, playerId) {
+    const composite = COMPOSITES ? COMPOSITES.find(c => c.id === compositeId) : null;
+    if (!composite) return false;
+    const connected = this.getConnectedResources(playerId);
+    return composite.ingredients.every(ing => connected.has(ing));
+  },
+
+  // ========== DIPLOMACY ==========
+
+  initRelations(playerId, otherPlayerId) {
+    const p = this.state.players[playerId];
+    if (!p.relations) p.relations = {};
+    if (!p.relations[otherPlayerId]) {
+      p.relations[otherPlayerId] = {score: 0, treaties: [], atWar: false};
+    }
+  },
+
+  modifyRelation(playerId, otherPlayerId, delta) {
+    this.initRelations(playerId, otherPlayerId);
+    this.initRelations(otherPlayerId, playerId);
+    const p = this.state.players[playerId];
+    p.relations[otherPlayerId].score = Math.max(-100, Math.min(100, p.relations[otherPlayerId].score + delta));
+    // Mirror (reduced)
+    const other = this.state.players[otherPlayerId];
+    other.relations[playerId].score = Math.max(-100, Math.min(100, other.relations[playerId].score + Math.floor(delta * 0.5)));
+  },
+
+  declareWar(playerId, otherPlayerId) {
+    this.initRelations(playerId, otherPlayerId);
+    this.initRelations(otherPlayerId, playerId);
+    this.state.players[playerId].relations[otherPlayerId].atWar = true;
+    this.state.players[otherPlayerId].relations[playerId].atWar = true;
+    this.modifyRelation(playerId, otherPlayerId, -50);
+    if (playerId === 0) UI.notify('You declared war on ' + this.state.players[otherPlayerId].name + '!');
+    else if (otherPlayerId === 0) UI.notify(this.state.players[playerId].name + ' declared war on you!');
+  },
+
+  makePeace(playerId, otherPlayerId) {
+    this.initRelations(playerId, otherPlayerId);
+    this.initRelations(otherPlayerId, playerId);
+    this.state.players[playerId].relations[otherPlayerId].atWar = false;
+    this.state.players[otherPlayerId].relations[playerId].atWar = false;
+    this.modifyRelation(playerId, otherPlayerId, 20);
+    if (playerId === 0) UI.notify('Peace treaty signed with ' + this.state.players[otherPlayerId].name + '.');
+  },
+
+  // ========== CITY SPECIALIZATIONS ==========
+
+  SPECIALIZATIONS: [
+    {id: 'mining', name: 'Mining', check: b => b.prod >= 2, bonus: {prodMod: 0.1}},
+    {id: 'farming', name: 'Farming', check: b => b.food >= 2, bonus: {growthMod: 0.1}},
+    {id: 'science', name: 'Science', check: b => b.sci >= 2, bonus: {sciMod: 0.1}},
+    {id: 'commerce', name: 'Commerce', check: b => b.gold >= 2, bonus: {goldMod: 0.1}},
+    {id: 'military', name: 'Military', check: b => b.defense > 0, bonus: {defMod: 0.1}},
+    {id: 'culture', name: 'Culture', check: b => b.cul >= 2, bonus: {culMod: 0.1}},
+    {id: 'industrial', name: 'Industrial', check: b => b.prodMod > 0, bonus: {prodMod: 0.15}},
+    {id: 'maritime', name: 'Maritime', check: b => b.needsCoast, bonus: {goldMod: 0.15}},
+  ],
+
+  getCitySpecialization(city) {
+    const counts = {};
+    for (const spec of this.SPECIALIZATIONS) {
+      counts[spec.id] = 0;
+      for (const bId of city.buildings) {
+        const b = BUILDINGS.find(b => b.id === bId);
+        if (b && spec.check(b)) counts[spec.id]++;
+      }
+    }
+    // Find dominant specialization
+    let best = null, bestCount = 0;
+    for (const [specId, count] of Object.entries(counts)) {
+      if (count > bestCount) { bestCount = count; best = specId; }
+    }
+    if (!best || bestCount < 3) return {id: null, tier: null, bonuses: {}};
+    const tier = bestCount >= 8 ? 'dominant' : bestCount >= 5 ? 'established' : 'emerging';
+    const spec = this.SPECIALIZATIONS.find(s => s.id === best);
+    const multiplier = tier === 'dominant' ? 3 : tier === 'established' ? 2 : 1;
+    const bonuses = {};
+    for (const [k, v] of Object.entries(spec.bonus)) {
+      bonuses[k] = v * multiplier;
+    }
+    return {id: best, name: spec.name, tier, bonuses};
+  },
+
+  // ========== MINOR FACTIONS ==========
+
+  // Minor factions are tracked as special non-player cities
+  // They provide bonuses to the player with highest influence
+
+  getMinorFactionBonus(factionType) {
+    switch (factionType) {
+      case 'militaristic': return {desc: '+2 XP for new units', xpBonus: 2};
+      case 'maritime': return {desc: '+1 food in all cities', foodBonus: 1};
+      case 'cultural': return {desc: '+2 culture in capital', culBonus: 2};
+      case 'scientific': return {desc: '+2 science in capital', sciBonus: 2};
+      case 'mercantile': return {desc: '+3 gold in capital', goldBonus: 3};
+      default: return {};
+    }
+  },
+
+  // ========== TRADE ROUTES ==========
+
+  TRADE_ROUTE_TYPES: [
+    {id: 'caravan', name: 'Caravan', domain: 'land'},
+    {id: 'cargo_ship', name: 'Cargo Ship', domain: 'sea'}
+  ],
+
+  getMaxTradeRoutes(player) {
+    let max = 1; // base
+    for (const city of player.cities) {
+      for (const bId of city.buildings) {
+        const b = BUILDINGS.find(b => b.id === bId);
+        if (b && (bId === 'market' || bId === 'trade_depot' || bId === 'stock_exchange' || bId === 'autonomous_port')) max++;
+      }
+    }
+    return Math.min(max, 8);
+  },
+
+  getTradeRouteIncome(fromCity, toCity) {
+    const dist = this.tileDistance(fromCity.r, fromCity.c, toCity.r, toCity.c);
+    const goldIncome = Math.max(1, Math.floor(dist * 0.5 + fromCity.population * 0.3 + toCity.population * 0.3));
+    const sciIncome = Math.floor(goldIncome * 0.3);
+    return {gold: goldIncome, sci: sciIncome};
+  },
+
+  processTradeRoutes(playerId) {
+    const p = this.state.players[playerId];
+    if (!p.tradeRoutes) p.tradeRoutes = [];
+    let totalGold = 0, totalSci = 0;
+    for (const route of p.tradeRoutes) {
+      const fromCity = this.findCityById(route.fromCityId);
+      const toCity = this.findCityById(route.toCityId);
+      if (!fromCity || !toCity) continue;
+      const income = this.getTradeRouteIncome(fromCity, toCity);
+      totalGold += income.gold;
+      totalSci += income.sci;
+    }
+    p.gold += totalGold;
+    p.totalScience += totalSci;
+    return {gold: totalGold, sci: totalSci};
+  },
+
+  establishTradeRoute(playerId, fromCityId, toCityId) {
+    const p = this.state.players[playerId];
+    if (!p.tradeRoutes) p.tradeRoutes = [];
+    if (p.tradeRoutes.length >= this.getMaxTradeRoutes(p)) {
+      if (playerId === 0) UI.notify('Maximum trade routes reached!');
+      return false;
+    }
+    if (p.tradeRoutes.some(r => r.fromCityId === fromCityId && r.toCityId === toCityId)) return false;
+    p.tradeRoutes.push({fromCityId, toCityId});
+    if (playerId === 0) UI.notify('Trade route established!');
+    return true;
+  },
+
+  // ========== SPORTS & ENTERTAINMENT ==========
+
+  SPORT_VENUES: ['stadium', 'athletics_track', 'golf_course', 'cricket_ground'],
+
+  processSports(playerId) {
+    const p = this.state.players[playerId];
+    if (!p.sportsState) p.sportsState = {teams: [], seasonCounter: 0, dynastyCount: 0, lastChamp: null};
+
+    // Build team list from venue buildings
+    p.sportsState.teams = [];
+    for (const city of p.cities) {
+      for (const bId of city.buildings) {
+        if (this.SPORT_VENUES.includes(bId) || bId === 'wembley' || bId === 'lords_cricket_ground') {
+          const existing = p.sportsState.teams.find(t => t.cityId === city.id);
+          if (!existing) {
+            p.sportsState.teams.push({
+              cityId: city.id, cityName: city.name,
+              rating: 30 + city.population * 3 + Math.floor(Math.random() * 20),
+              wins: 0
+            });
+          }
+        }
+      }
+    }
+
+    // Season every 10 turns
+    p.sportsState.seasonCounter++;
+    if (p.sportsState.seasonCounter >= 10 && p.sportsState.teams.length >= 2) {
+      p.sportsState.seasonCounter = 0;
+      // Run season — best rated team wins
+      let bestTeam = p.sportsState.teams.reduce((a, b) =>
+        (a.rating + Math.random() * 20) > (b.rating + Math.random() * 20) ? a : b
+      );
+      bestTeam.wins++;
+
+      // Dynasty bonus
+      if (p.sportsState.lastChamp === bestTeam.cityId) {
+        p.sportsState.dynastyCount++;
+        if (p.sportsState.dynastyCount >= 3) {
+          p.totalCulture += 5;
+          if (playerId === 0) UI.notify(bestTeam.cityName + ' dynasty! +5 Culture!');
+        }
+      } else {
+        p.sportsState.lastChamp = bestTeam.cityId;
+        p.sportsState.dynastyCount = 1;
+      }
+      if (playerId === 0) UI.notify('⚽ ' + bestTeam.cityName + ' wins the season!');
+
+      // Olympics every 40 turns
+      if (this.state.turn % 40 === 0 && p.sportsState.teams.length > 0) {
+        const hostCity = p.cities.find(c => c.id === p.sportsState.teams[0].cityId);
+        if (hostCity) {
+          p.totalCulture += 10;
+          p.gold += 20;
+          if (playerId === 0) UI.notify('🏅 Olympics hosted in ' + hostCity.name + '! +10 Culture, +20 Gold');
+        }
+      }
+    }
+  },
+
+  // ========== RELIGION & FAITH ==========
+
+  PANTHEONS: [
+    {id: 'sun_god', name: 'God of the Sun', desc: '+1 food from farms', effect: {farmFood: 1}},
+    {id: 'earth_mother', name: 'Earth Mother', desc: '+1 faith from mines', effect: {mineFaith: 1}},
+    {id: 'god_of_war', name: 'God of War', desc: '+10% combat str', effect: {combatMod: 0.1}},
+    {id: 'sea_god', name: 'God of the Sea', desc: '+1 food from coast', effect: {coastFood: 1}},
+    {id: 'god_of_craft', name: 'God of Craftsmen', desc: '+1 prod in cities', effect: {cityProd: 1}},
+    {id: 'goddess_of_love', name: 'Goddess of Love', desc: '+1 happiness in all cities', effect: {empHappy: 1}},
+  ],
+
+  BELIEFS: [
+    {id: 'tithe', name: 'Tithe', desc: '+1 gold per 4 followers'},
+    {id: 'religious_community', name: 'Religious Community', desc: '+1% prod per follower'},
+    {id: 'choral_music', name: 'Choral Music', desc: 'Shrines & Temples give +culture'},
+    {id: 'scripture', name: 'Scripture', desc: '+1 science from shrines'},
+    {id: 'pilgrimage', name: 'Pilgrimage', desc: '+2 faith per foreign city with religion'},
+  ],
+
+  processFaith(playerId) {
+    const p = this.state.players[playerId];
+    if (!p.faith) p.faith = 0;
+
+    // Faith from buildings
+    let faithGain = 0;
+    for (const city of p.cities) {
+      for (const bId of city.buildings) {
+        if (bId === 'shrine') faithGain += 1;
+        if (bId === 'temple' || bId === 'cathedral' || bId === 'monastery') faithGain += 2;
+        if (bId === 'pagoda') faithGain += 3;
+      }
+    }
+    p.faith += faithGain;
+
+    // Pantheon threshold
+    if (!p.pantheon && p.faith >= 25) {
+      // Auto-select first available pantheon
+      const taken = this.state.players.filter(pl => pl.pantheon).map(pl => pl.pantheon);
+      const available = this.PANTHEONS.filter(pa => !taken.includes(pa.id));
+      if (available.length > 0) {
+        p.pantheon = available[0].id;
+        if (playerId === 0) UI.notify('Pantheon founded: ' + available[0].name + '!');
+      }
+    }
+
+    // Religion threshold
+    if (!p.religion && p.pantheon && p.faith >= 100) {
+      const religionNames = ['Buddhism','Christianity','Hinduism','Islam','Judaism','Taoism','Zoroastrianism','Confucianism'];
+      const taken = this.state.players.filter(pl => pl.religion).map(pl => pl.religion);
+      const available = religionNames.filter(r => !taken.includes(r));
+      if (available.length > 0) {
+        p.religion = available[0];
+        if (playerId === 0) UI.notify('Religion founded: ' + p.religion + '!');
+      }
+    }
+
+    // Pantheon combat bonus
+    if (p.pantheon === 'god_of_war') {
+      p.combatMod = (p.isAI ? this.state.difficulty.aiCombat : 1.0) * 1.1;
+    }
+  },
+
   // ========== FOG OF WAR ==========
 
   updateFogOfWar() {
@@ -1132,7 +1863,8 @@ const Game = {
     // Reset human units
     for (const u of this.state.players[0].units) {
       const uType = this.getUnitType(u);
-      u.movementLeft = uType.mv;
+      const promos = this.getPromotionBonuses(u);
+      u.movementLeft = uType.mv + promos.mvBonus;
       u.hasActed = false;
     }
 
@@ -1144,7 +1876,8 @@ const Game = {
       // Reset AI units
       for (const u of this.state.players[i].units) {
         const uType = this.getUnitType(u);
-        u.movementLeft = uType.mv;
+        const promos = this.getPromotionBonuses(u);
+        u.movementLeft = uType.mv + promos.mvBonus;
         u.hasActed = false;
       }
     }
@@ -1295,7 +2028,16 @@ const Game = {
       if (p.techs && p.techs.__set) p.techs = new Set(p.techs.__set);
       else if (Array.isArray(p.techs)) p.techs = new Set(p.techs);
       else if (!(p.techs instanceof Set)) p.techs = new Set();
+      // Backward-compat for new systems
+      if (!p.cultureAccum) p.cultureAccum = {};
+      if (!p.greatPeoplePoints) p.greatPeoplePoints = {scientist:0,engineer:0,artist:0,general:0,merchant:0,prophet:0};
+      if (!p.greatPeopleThreshold) p.greatPeopleThreshold = 100;
+      if (!p.faith) p.faith = 0;
+      if (!p.relations) p.relations = {};
+      if (p.treaties && p.treaties.__set) p.treaties = new Set(p.treaties.__set);
     }
+    if (!this.state.eraHistory) this.state.eraHistory = [{turn: 0, era: 'caveman'}];
+    if (!this.state.goldenAge) this.state.goldenAge = {};
     this.rowWidths = data.rowWidths;
 
     // Rebuild map
