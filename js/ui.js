@@ -138,7 +138,27 @@ const UI = {
     document.querySelector('#res-history b').textContent = Math.floor(p.totalHistory);
 
     document.getElementById('turn-display').textContent = Game.getYearString() + ' (Turn ' + Game.state.turn + ')';
-    document.getElementById('era-display').textContent = ERA_ICONS[p.era] + ' ' + ERA_NAMES[p.era] + ' Era';
+
+    // Golden Age indicator
+    let eraText = ERA_ICONS[p.era] + ' ' + ERA_NAMES[p.era] + ' Era';
+    const eraEl = document.getElementById('era-display');
+    if (Game.state.goldenAge && Game.state.goldenAge[0] && Game.state.goldenAge[0].turnsLeft > 0) {
+      eraEl.innerHTML = eraText + ' <span class="golden-age-badge">🌟 Golden Age (' + Game.state.goldenAge[0].turnsLeft + ' turns)</span>';
+    } else {
+      eraEl.textContent = eraText;
+    }
+
+    // Faith / Religion indicator
+    const faithEl = document.getElementById('res-faith');
+    if (faithEl) {
+      let faithText = '<b>' + Math.floor(p.faith || 0) + '</b>';
+      if (p.religion) faithText += ' <span style="color:var(--accent2)">' + p.religion + '</span>';
+      else if (p.pantheon) {
+        const pan = Game.PANTHEONS.find(pa => pa.id === p.pantheon);
+        faithText += ' <span style="color:var(--text-dim)">' + (pan ? pan.name : p.pantheon) + '</span>';
+      }
+      faithEl.innerHTML = '🙏 ' + faithText;
+    }
 
     // Resource tooltip hover handlers
     const tooltip = document.getElementById('resource-tooltip');
@@ -212,6 +232,7 @@ const UI = {
       const unit = Game.selectedUnit;
       const uType = Game.getUnitType(unit);
       const p = Game.state.players[unit.owner];
+      const promos = unit.owner === 0 ? Game.getAvailablePromotions(unit) : [];
       panel.innerHTML = `
         <div class="unit-card">
           <h4>${Renderer.getUnitIcon(uType)} ${uType.name} <span class="ency-ref" onclick="UI.showEncyclopedia('units','${uType.id}')" title="Book of Apollo">📖</span></h4>
@@ -226,10 +247,12 @@ const UI = {
             ${unit.fortified ? '<div>🛡 Fortified</div>' : ''}
             ${unit.sleeping ? '<div>💤 Sleeping</div>' : ''}
             ${unit.buildingImprovement ? `<div>🔨 Building ${IMPROVEMENTS.find(i=>i.id===unit.buildingImprovement)?.name || unit.buildingImprovement} (${unit.buildProgress || 0}/${unit.buildTurnsNeeded})</div>` : ''}
+            ${unit.outOfSupply ? '<div style="color:var(--red);font-weight:600">⚠️ Out of Supply (-25% str)</div>' : ''}
           </div>
           <div class="hp-bar">
             <div class="hp-fill" style="width:${unit.hp}%;background:${unit.hp > 50 ? '#4caf50' : unit.hp > 25 ? '#ff9800' : '#e94560'}"></div>
           </div>
+          ${promos.length > 0 ? '<button class="btn-promote" onclick="UI.showPromotionPicker()">⭐ Promote</button>' : ''}
         </div>
       `;
     } else {
@@ -254,7 +277,10 @@ const UI = {
       const imp = IMPROVEMENTS.find(i => i.id === tile.improvement);
       if (imp) html += `<div style="margin-top:4px">${imp.icon} ${imp.name} (+${imp.yields.food}🌾 +${imp.yields.prod}⚙️ +${imp.yields.gold}💰)</div>`;
     }
-    if (tile.road) html += `<div>🛤️ Road</div>`;
+    if (tile.road) {
+      const roadLabel = tile.road === 'motorway' ? '🛣️ Motorway' : tile.road === 'railway' ? '🚂 Railway' : '🛤️ Road';
+      html += `<div>${roadLabel}</div>`;
+    }
 
     if (tile.owner >= 0) {
       html += `<div style="margin-top:4px">Territory: ${Game.state.players[tile.owner].name}</div>`;
@@ -427,7 +453,16 @@ const UI = {
     let html = `
       <div style="margin-bottom:10px">
         <b>${tierInfo.name}</b> — Pop ${city.population} | Slots: ${city.buildings.length}/${tierInfo.slots}
-      </div>
+      </div>`;
+
+    // City specialization
+    const spec = Game.getCitySpecialization(city);
+    if (spec.id) {
+      const bonusStr = Object.entries(spec.bonuses).map(([k, v]) => '+' + Math.round(v * 100) + '% ' + k.replace('Mod', '')).join(', ');
+      html += `<div class="city-spec-badge" title="${bonusStr}">⚙️ ${spec.name} (${spec.tier})</div>`;
+    }
+
+    html += `
       <div class="city-yields">
         <span class="city-yield">🌾 <b>${yields.food}</b> (${foodSurplus >= 0 ? '+' : ''}${foodSurplus})</span>
         <span class="city-yield">⚙️ <b>${yields.prod}</b></span>
@@ -473,6 +508,34 @@ const UI = {
       }
       html += '</div>';
     }
+
+    // Trade routes
+    const p = Game.state.players[0];
+    const tradeRoutes = (p.tradeRoutes || []).filter(r => r.fromCityId === city.id);
+    const maxRoutes = Game.getMaxTradeRoutes(p);
+    html += '<div style="margin:8px 0"><b>Trade Routes</b> (' + tradeRoutes.length + '/' + maxRoutes + ')';
+    if (tradeRoutes.length > 0) {
+      for (const route of tradeRoutes) {
+        const toCity = Game.findCityById(route.toCityId);
+        if (toCity) {
+          const income = Game.getTradeRouteIncome(city, toCity);
+          html += `<div class="trade-route-item">📦 → ${toCity.name} <span style="color:var(--gold)">+${income.gold}💰 +${income.sci}🔬</span></div>`;
+        }
+      }
+    }
+    if (p.tradeRoutes.length < maxRoutes) {
+      const otherCities = p.cities.filter(c => c.id !== city.id && !tradeRoutes.some(r => r.toCityId === c.id));
+      if (otherCities.length > 0) {
+        html += '<select class="trade-route-select" onchange="UI.establishTradeFromCity(' + city.id + ', this.value)">';
+        html += '<option value="">+ Establish Trade Route...</option>';
+        for (const oc of otherCities) {
+          const income = Game.getTradeRouteIncome(city, oc);
+          html += `<option value="${oc.id}">${oc.name} (+${income.gold}💰 +${income.sci}🔬)</option>`;
+        }
+        html += '</select>';
+      }
+    }
+    html += '</div>';
 
     // Available builds
     html += '<div style="margin-top:10px"><b>Build Options</b></div>';
@@ -1182,5 +1245,88 @@ const UI = {
     el.style.padding = '20px 40px';
     el.textContent = msg;
     container.appendChild(el);
+  },
+
+  // ========== PROMOTION PICKER ==========
+
+  showPromotionPicker() {
+    const unit = Game.selectedUnit;
+    if (!unit) return;
+    const promos = Game.getAvailablePromotions(unit);
+    if (promos.length === 0) return;
+    // Remove existing popup if any
+    const existing = document.getElementById('promotion-popup');
+    if (existing) existing.remove();
+
+    let html = '<div class="panel-header"><h3>⭐ Choose Promotion</h3><button class="btn-close" onclick="document.getElementById(\'promotion-popup\').remove()">&times;</button></div>';
+    for (const p of promos) {
+      html += `<div class="promo-option" onclick="UI.pickPromotion('${p.id}')">
+        <b>${p.name}</b><br><span style="color:var(--text-dim);font-size:12px">${p.desc}</span>
+      </div>`;
+    }
+
+    const popup = document.createElement('div');
+    popup.id = 'promotion-popup';
+    popup.className = 'overlay-panel';
+    popup.innerHTML = html;
+    document.getElementById('game-screen').appendChild(popup);
+  },
+
+  pickPromotion(promoId) {
+    const unit = Game.selectedUnit;
+    if (!unit) return;
+    Game.applyPromotion(unit, promoId);
+    const popup = document.getElementById('promotion-popup');
+    if (popup) popup.remove();
+    this.updateRightPanel();
+    this.updateActionButtons();
+  },
+
+  // ========== TRADE ROUTE HELPER ==========
+
+  establishTradeFromCity(fromCityId, toCityIdStr) {
+    if (!toCityIdStr) return;
+    Game.establishTradeRoute(0, fromCityId, parseInt(toCityIdStr));
+    const city = Game.findCityById(fromCityId);
+    if (city) this.showCityPanel(city);
+  },
+
+  // ========== DIPLOMACY PANEL ==========
+
+  showDiplomacy() {
+    const panel = document.getElementById('diplomacy-panel');
+    panel.classList.remove('hidden');
+    this.renderDiplomacy();
+  },
+
+  closeDiplomacy() {
+    document.getElementById('diplomacy-panel').classList.add('hidden');
+  },
+
+  renderDiplomacy() {
+    if (!Game.state) return;
+    const myPlayer = Game.state.players[0];
+    let html = '';
+    for (let i = 1; i < Game.state.players.length; i++) {
+      const other = Game.state.players[i];
+      if (!other.alive) continue;
+      Game.initRelations(0, i);
+      const rel = myPlayer.relations[i];
+      const score = rel.score || 0;
+      const atWar = rel.atWar || false;
+      const scoreColor = score > 0 ? 'var(--green)' : score < 0 ? 'var(--red)' : 'var(--text-dim)';
+      html += `<div class="diplo-row">
+        <span class="diplo-color-swatch" style="background:${other.color}"></span>
+        <span class="diplo-name">${other.name}</span>
+        <span class="diplo-score" style="color:${scoreColor}">${score > 0 ? '+' : ''}${score}</span>
+        <span class="diplo-status" style="color:${atWar ? 'var(--red)' : 'var(--green)'}">${atWar ? '⚔️ War' : '☮️ Peace'}</span>
+        <span class="diplo-actions">
+          ${!atWar ? `<button class="btn-sm diplo-btn-war" onclick="Game.declareWar(0,${i});UI.renderDiplomacy()">Declare War</button>` : ''}
+          ${atWar && (rel.warTurns || 0) >= 10 ? `<button class="btn-sm diplo-btn-peace" onclick="Game.makePeace(0,${i});UI.renderDiplomacy()">Make Peace</button>` : ''}
+        </span>
+      </div>`;
+    }
+    if (!html) html = '<p style="color:var(--text-dim);text-align:center">No other civilizations discovered.</p>';
+    document.getElementById('diplomacy-content').innerHTML = html;
   }
 };

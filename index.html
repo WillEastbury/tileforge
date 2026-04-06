@@ -88,6 +88,7 @@
         <span class="res" id="res-science" title="Science">🔬 <b>0</b></span>
         <span class="res" id="res-culture" title="Culture">🎭 <b>0</b></span>
         <span class="res" id="res-history" title="History">📜 <b>0</b></span>
+        <span class="res" id="res-faith" title="Faith">🙏 <b>0</b></span>
       </div>
       <div class="turn-info">
         <span id="turn-display">Turn 1</span>
@@ -97,6 +98,7 @@
         <select id="city-jump-select" class="city-jump-dropdown" onchange="UI.jumpToCity(this.value)" title="Jump to City">
           <option value="">🏛 Cities</option>
         </select>
+        <button class="btn-sm" onclick="UI.showDiplomacy()" title="Diplomacy">🏛️</button>
         <button class="btn-sm" onclick="UI.showTechTree()" title="Tech Tree">🔬</button>
         <button class="btn-sm" onclick="UI.showEncyclopedia()" title="Book of Apollo">📖</button>
         <button class="btn-sm" onclick="UI.showSaveGame()" title="Save Game">💾</button>
@@ -135,6 +137,15 @@
         <button class="btn-close" onclick="UI.closeTechTree()">&times;</button>
       </div>
       <div id="tech-tree-content"></div>
+    </div>
+
+    <!-- Diplomacy Panel (overlay) -->
+    <div id="diplomacy-panel" class="overlay-panel hidden">
+      <div class="panel-header">
+        <h3>🏛️ Diplomacy</h3>
+        <button class="btn-close" onclick="UI.closeDiplomacy()">&times;</button>
+      </div>
+      <div id="diplomacy-content"></div>
     </div>
 
     <!-- Encyclopedia Panel (overlay) -->

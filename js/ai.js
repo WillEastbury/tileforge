@@ -6,15 +6,69 @@ const AI = {
     const p = Game.state.players[playerId];
     if (!p.alive) return;
 
+    // Diplomacy decisions
+    this.manageDiplomacy(playerId, p);
+
     // City management
     for (const city of p.cities) {
       this.manageCity(city, p);
     }
 
+    // Trade route management
+    this.manageTradeRoutes(playerId, p);
+
     // Unit management
     for (const unit of [...p.units]) {
       if (!p.units.includes(unit)) continue; // May have been killed
       this.manageUnit(unit, p);
+    }
+  },
+
+  manageDiplomacy(playerId, player) {
+    const myMilitary = player.units.filter(u => Game.getUnitType(u).str > 0).length;
+
+    for (const other of Game.state.players) {
+      if (other.id === playerId || !other.alive) continue;
+
+      Game.initRelations(playerId, other.id);
+      const rel = player.relations[other.id];
+      if (!rel) continue;
+
+      // Adjust relation scores based on borders
+      const hasSharedBorder = player.cities.some(myCity =>
+        other.cities.some(theirCity => Game.tileDist(myCity.r, myCity.c, theirCity.r, theirCity.c) <= 5)
+      );
+      if (hasSharedBorder) rel.score = (rel.score || 0) - 5;
+
+      // Trade boosts relations
+      if (player.tradeRoutes && player.tradeRoutes.some(r => r.partnerId === other.id)) {
+        rel.score = (rel.score || 0) + 5;
+      }
+
+      const score = rel.score || 0;
+      const theirMilitary = other.units.filter(u => Game.getUnitType(u).str > 0).length;
+
+      if (score < -30 && !rel.war && myMilitary > theirMilitary) {
+        Game.declareWar(playerId, other.id);
+      } else if (rel.war && (score > -10 || player.cities.length < 2)) {
+        Game.makePeace(playerId, other.id);
+      }
+    }
+  },
+
+  manageTradeRoutes(playerId, player) {
+    if (!player.tradeRoutes) player.tradeRoutes = [];
+    if (player.tradeRoutes.length < Game.getMaxTradeRoutes(player) && player.cities.length >= 2) {
+      for (let i = 0; i < player.cities.length; i++) {
+        for (let j = i + 1; j < player.cities.length; j++) {
+          const a = player.cities[i], b = player.cities[j];
+          if (!player.tradeRoutes.some(r => r.fromCityId === a.id && r.toCityId === b.id)) {
+            Game.establishTradeRoute(playerId, a.id, b.id);
+            break;
+          }
+        }
+        if (player.tradeRoutes.length >= Game.getMaxTradeRoutes(player)) break;
+      }
     }
   },
 
@@ -50,20 +104,22 @@ const AI = {
     // Build buildings
     const available = Game.getAvailableBuildings(city);
     if (available.length > 0) {
-      // Prioritize by era and yield
       const scored = available.map(b => {
         let score = 0;
-        score += b.food * 3;
-        score += b.prod * 2.5;
-        score += b.gold * 2;
-        score += b.sci * 2;
-        score += b.cul * 1.5;
-        score += b.hap * 3;
+        score += (b.food || 0) * 3;
+        score += (b.prod || 0) * 2.5;
+        score += (b.gold || 0) * 2;
+        score += (b.sci || 0) * 2;
+        score += (b.cul || 0) * 1.5;
+        score += (b.hap || 0) * 3;
         if (b.defense) score += b.defense * 0.5;
         if (b.growthMod) score += b.growthMod * 20;
         if (b.sciMod) score += b.sciMod * 15;
         if (b.goldMod) score += b.goldMod * 10;
         if (b.prodMod) score += b.prodMod * 15;
+        // Prioritize faith buildings (shrines, temples)
+        if (b.faith) score += b.faith * 4;
+        if (b.id === 'shrine' || b.id === 'temple') score += 8;
         return {b, score};
       });
       scored.sort((a, b) => b.score - a.score);
@@ -113,6 +169,20 @@ const AI = {
   manageUnit(unit, player) {
     const uType = Game.getUnitType(unit);
     if (unit.movementLeft <= 0) return;
+
+    // Handle promotions before other actions
+    const promos = Game.getAvailablePromotions(unit);
+    if (promos.length > 0) {
+      let pick = promos[0];
+      if (uType.type === 'melee' || uType.type === 'mounted') {
+        pick = promos.find(p => p.strMod) || promos.find(p => p.mvBonus) || promos[0];
+      } else if (uType.type === 'ranged') {
+        pick = promos.find(p => p.id === 'accuracy') || promos.find(p => p.strMod) || promos[0];
+      } else {
+        pick = promos.find(p => p.defBonus) || promos[0];
+      }
+      Game.applyPromotion(unit, pick.id);
+    }
 
     if (uType.type === 'settler') {
       this.settlerAI(unit, player);
@@ -189,9 +259,97 @@ const AI = {
   },
 
   workerAI(unit, player) {
-    // Simple: just move toward nearest unimproved resource in player territory
-    // For now, just wander
-    this.explorerAI(unit, player);
+    const tile = Game.getTile(unit.r, unit.c);
+    if (!tile) { this.explorerAI(unit, player); return; }
+
+    // If on an owned tile with no improvement, build one
+    if (tile.owner === player.id && !tile.improvement) {
+      const terrain = TERRAINS[tile.terrain];
+      if (!terrain.water && terrain.mv < 99) {
+        // Find best improvement for this tile
+        const bestImp = this.pickImprovement(tile, terrain, player);
+        if (bestImp) {
+          Game.startBuildImprovement(unit, bestImp);
+          return;
+        }
+      }
+    }
+
+    // If tile has improvement but no road, build a road
+    if (tile.owner === player.id && tile.improvement && !tile.road) {
+      const roadImp = IMPROVEMENTS.find(imp => imp.id === 'road' &&
+        (!imp.req || player.techs.has(imp.req)));
+      if (roadImp) {
+        Game.startBuildImprovement(unit, 'road');
+        return;
+      }
+    }
+
+    // Upgrade roads: railway if has steam_power, motorway if has combustion
+    if (tile.owner === player.id && tile.road) {
+      if (player.techs.has('combustion') && tile.road !== 'motorway') {
+        const motorImp = IMPROVEMENTS.find(imp => imp.id === 'motorway');
+        if (motorImp) {
+          Game.startBuildImprovement(unit, 'motorway');
+          return;
+        }
+      } else if (player.techs.has('steam_power') && tile.road !== 'railway' && tile.road !== 'motorway') {
+        const railImp = IMPROVEMENTS.find(imp => imp.id === 'railway');
+        if (railImp) {
+          Game.startBuildImprovement(unit, 'railway');
+          return;
+        }
+      }
+    }
+
+    // Move toward nearest unimproved owned tile
+    let bestTile = null, bestDist = Infinity;
+    const searchRadius = 8;
+    for (let dr = -searchRadius; dr <= searchRadius; dr++) {
+      for (let dc = -searchRadius; dc <= searchRadius; dc++) {
+        const r = unit.r + dr;
+        const c = unit.c + dc;
+        if (r < 0 || r >= Game.state.mapHeight) continue;
+        const rw = Game.rowWidths[r];
+        const cc = ((c % rw) + rw) % rw;
+        const t = Game.getTile(r, cc);
+        if (!t || t.owner !== player.id || t.improvement) continue;
+        const terr = TERRAINS[t.terrain];
+        if (terr.water || terr.mv >= 99) continue;
+        const d = Game.tileDist(unit.r, unit.c, r, cc);
+        if (d > 0 && d < bestDist) {
+          bestDist = d;
+          bestTile = {r, c: cc};
+        }
+      }
+    }
+
+    if (bestTile) {
+      this.moveToward(unit, bestTile.r, bestTile.c);
+    } else {
+      this.explorerAI(unit, player);
+    }
+  },
+
+  pickImprovement(tile, terrain, player) {
+    // Priority: farm on grassland/plains, mine on hills/mountains
+    const candidates = [];
+    for (const imp of IMPROVEMENTS) {
+      if (imp.id === 'road' || imp.id === 'railway' || imp.id === 'motorway') continue;
+      if (imp.req && !player.techs.has(imp.req)) continue;
+      if (imp.terrains && !imp.terrains.includes(terrain.id) && !imp.terrains.includes('any_land')) continue;
+      let priority = 0;
+      if (imp.id === 'farm' && (terrain.id === 'grassland' || terrain.id === 'plains')) priority = 10;
+      else if (imp.id === 'mine' && (terrain.id === 'hills' || terrain.id === 'mountains')) priority = 9;
+      else if (imp.id === 'farm') priority = 6;
+      else if (imp.id === 'mine') priority = 5;
+      else if (imp.id === 'plantation' || imp.id === 'camp' || imp.id === 'pasture') priority = 7;
+      else priority = 3;
+      candidates.push({id: imp.id, priority});
+    }
+    if (candidates.length === 0) return null;
+    candidates.sort((a, b) => b.priority - a.priority);
+    return candidates[0].id;
   },
 
   explorerAI(unit, player) {
@@ -311,18 +469,35 @@ const AI = {
     const available = Game.getAvailableTechs(player);
     if (available.length === 0) return;
 
-    // Score techs
+    const atWar = player.relations && Object.values(player.relations).some(r => r && r.war);
+    const hasRoadTech = player.techs.has('the_wheel') || player.techs.has('engineering');
+    const hasShrine = player.cities.some(c => c.buildings && c.buildings.includes('shrine'));
+
     const scored = available.map(t => {
       let score = 0;
       // Prefer earlier eras
       score -= ERAS.indexOf(t.era) * 5;
       // Prefer techs that unlock buildings
       score += t.unlocks.length * 3;
-      // Prefer military techs if at war or aggressive
-      if (t.unlocks.some(u => UNIT_TYPES.find(ut => ut.id === u && ut.str > 0))) score += 5;
+
+      // At war: strongly prefer military techs
+      if (atWar && t.unlocks.some(u => UNIT_TYPES.find(ut => ut.id === u && ut.str > 0))) score += 12;
+      else if (t.unlocks.some(u => UNIT_TYPES.find(ut => ut.id === u && ut.str > 0))) score += 5;
+
+      // Need roads: prefer road-enabling techs
+      if (!hasRoadTech && t.unlocks.some(u => u === 'road' || IMPROVEMENTS.find(imp => imp.id === u))) score += 8;
+
+      // Faith buildings: prefer theology if no shrine yet
+      if (!hasShrine && (t.id === 'theology' || t.id === 'mysticism')) score += 7;
+      if (t.unlocks.some(u => BUILDINGS.find(b => b.id === u && b.faith))) score += 5;
+
       // Prefer science/economy techs
       if (t.unlocks.some(u => BUILDINGS.find(b => b.id === u && b.sci > 0))) score += 4;
       if (t.unlocks.some(u => BUILDINGS.find(b => b.id === u && b.gold > 0))) score += 3;
+
+      // Prefer techs that unlock improvements
+      if (t.unlocks.some(u => IMPROVEMENTS.find(imp => imp.id === u))) score += 3;
+
       // Cheaper is better
       score -= t.cost * 0.01;
       return {t, score};

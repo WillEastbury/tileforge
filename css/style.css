@@ -263,6 +263,41 @@ html, body { height: 100%; overflow: hidden; font-family: 'Segoe UI', system-ui,
 .ency-ref { cursor: pointer; color: var(--accent2); font-size: 11px; vertical-align: super; margin-left: 2px; }
 .ency-ref:hover { color: #fff; }
 
+/* Golden Age Badge */
+.golden-age-badge { color: var(--gold); font-weight: 700; animation: pulse 1.5s infinite; }
+
+/* Faith Resource */
+#res-faith { font-size: 14px; white-space: nowrap; }
+#res-faith b { color: var(--gold); }
+
+/* Promotion Popup */
+#promotion-popup { top: 50%; left: 50%; transform: translate(-50%, -50%); width: 320px; max-height: 400px; overflow-y: auto; z-index: 150; }
+.promo-option { padding: 10px; margin: 4px 0; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 4px; cursor: pointer; transition: all 0.15s; }
+.promo-option:hover { border-color: var(--gold); background: rgba(240,192,64,0.1); }
+.btn-promote { display: block; width: 100%; margin-top: 8px; padding: 6px; background: var(--gold); color: #000; border: none; border-radius: 4px; font-weight: 700; cursor: pointer; font-size: 13px; }
+.btn-promote:hover { background: #ffd060; }
+
+/* Diplomacy Panel */
+#diplomacy-panel { top: 50px; left: 50%; transform: translateX(-50%); width: 550px; max-height: calc(100vh - 110px); overflow-y: auto; }
+.diplo-row { display: flex; align-items: center; gap: 10px; padding: 10px; margin-bottom: 4px; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 4px; font-size: 13px; }
+.diplo-color-swatch { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.2); }
+.diplo-name { font-weight: 600; flex: 1; }
+.diplo-score { font-weight: 700; min-width: 40px; text-align: right; }
+.diplo-status { min-width: 70px; text-align: center; font-size: 12px; }
+.diplo-actions { display: flex; gap: 4px; }
+.diplo-btn-war { background: rgba(233,69,96,0.2) !important; color: var(--red) !important; border: 1px solid var(--red) !important; font-size: 11px !important; padding: 4px 8px !important; }
+.diplo-btn-war:hover { background: rgba(233,69,96,0.4) !important; }
+.diplo-btn-peace { background: rgba(76,175,80,0.2) !important; color: var(--green) !important; border: 1px solid var(--green) !important; font-size: 11px !important; padding: 4px 8px !important; }
+.diplo-btn-peace:hover { background: rgba(76,175,80,0.4) !important; }
+
+/* City Specialization Badge */
+.city-spec-badge { display: inline-block; padding: 3px 10px; margin-bottom: 8px; background: rgba(83,168,182,0.15); border: 1px solid var(--accent2); border-radius: 4px; font-size: 12px; color: var(--accent2); font-weight: 600; cursor: help; }
+
+/* Trade Route Items */
+.trade-route-item { padding: 4px 8px; margin: 3px 0; background: var(--bg-dark); border-radius: 4px; font-size: 12px; }
+.trade-route-select { width: 100%; margin-top: 4px; padding: 6px; background: var(--bg-dark); color: var(--text); border: 1px solid var(--border); border-radius: 4px; font-size: 12px; cursor: pointer; }
+.trade-route-select:hover { border-color: var(--accent2); }
+
 /* Tech Tree Buttons */
 .tech-buttons { display: flex; gap: 4px; margin-top: 4px; }
 .tech-btn-research { padding: 2px 8px; font-size: 11px; font-weight: 600; background: var(--green); color: #fff; border: none; border-radius: 3px; cursor: pointer; }

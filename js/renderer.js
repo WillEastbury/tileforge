@@ -1439,6 +1439,7 @@ const Renderer = {
 
     this.terrainLayer.removeChildren();
     this.resourceLayer.removeChildren();
+    this.roadLayer.removeChildren();
     this.cityLayer.removeChildren();
     this.unitLayer.removeChildren();
     this.fogLayer.removeChildren();
@@ -1469,6 +1470,8 @@ const Renderer = {
       screenW / 2 - this.camera.x * zoom,
       screenH / 2 - this.camera.y * zoom
     );
+
+    let roadGfx = null;
 
     for (let r = minRow; r <= maxRow; r++) {
       const rw = Game.rowWidths[r];
@@ -1563,6 +1566,60 @@ const Renderer = {
           borderGfx.drawRect(px, py, tileW - 1, ts - 1);
           borderGfx.endFill();
           this.borderLayer.addChild(borderGfx);
+        }
+
+        // Roads / railways / motorways
+        if (tile.road) {
+          const cx = px + tileW / 2;
+          const cy = py + ts / 2;
+          const neighbors = Game.getNeighbors(r, c);
+          // Cardinals: [0]=E, [1]=W, [2]=S(r+1), [3]=N(r-1)
+          const edgePoints = [
+            [px + tileW, cy],  // E
+            [px, cy],          // W
+            [cx, py + ts],     // S
+            [cx, py],          // N
+          ];
+          if (!roadGfx) {
+            roadGfx = new PIXI.Graphics();
+            this.roadLayer.addChild(roadGfx);
+          }
+          const roadAlpha = fog === 1 ? 0.4 : 1.0;
+          for (let d = 0; d < 4; d++) {
+            const nb = neighbors[d];
+            const nbTile = Game.mapData[nb.r][nb.c];
+            if (!nbTile.road) continue;
+            const [ex, ey] = edgePoints[d];
+            if (tile.road === 'railway') {
+              roadGfx.lineStyle(3, 0x444444, roadAlpha);
+              roadGfx.moveTo(cx, cy);
+              roadGfx.lineTo(ex, ey);
+              // Cross-ties: small perpendicular ticks along the segment
+              const dx = ex - cx, dy = ey - cy;
+              const len = Math.sqrt(dx * dx + dy * dy);
+              const ticks = Math.max(2, Math.floor(len / 8));
+              const nx = -dy / len, ny = dx / len;
+              for (let t = 1; t < ticks; t++) {
+                const frac = t / ticks;
+                const mx = cx + dx * frac, my = cy + dy * frac;
+                roadGfx.lineStyle(1, 0x444444, roadAlpha);
+                roadGfx.moveTo(mx - nx * 3, my - ny * 3);
+                roadGfx.lineTo(mx + nx * 3, my + ny * 3);
+              }
+            } else if (tile.road === 'motorway') {
+              roadGfx.lineStyle(4, 0x333333, roadAlpha);
+              roadGfx.moveTo(cx, cy);
+              roadGfx.lineTo(ex, ey);
+              roadGfx.lineStyle(1, 0xFFFF00, roadAlpha);
+              roadGfx.moveTo(cx, cy);
+              roadGfx.lineTo(ex, ey);
+            } else {
+              // Basic road
+              roadGfx.lineStyle(2, 0x8B7355, roadAlpha);
+              roadGfx.moveTo(cx, cy);
+              roadGfx.lineTo(ex, ey);
+            }
+          }
         }
 
         if (fog !== 2) continue; // Only show details for visible tiles
