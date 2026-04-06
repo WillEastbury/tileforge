@@ -129,7 +129,8 @@ const Game = {
       faith: 0,
       pantheon: null,
       religion: null,
-      relations: {} // playerId -> {score, treaties: Set}
+      relations: {}, // playerId -> {score, treaties: Set}
+      tradeRoutes: []
     };
   },
 
@@ -593,8 +594,16 @@ const Game = {
     if (!tile) return false;
     const terrain = TERRAINS[tile.terrain];
 
-    // Domain check
-    if (uType.domain === 'land' && terrain.water) return false;
+    // Domain check — land bridge (Channel Tunnel) lets land units cross shallow straits
+    if (uType.domain === 'land' && terrain.water) {
+      if (!this.hasLandBridge(unit.owner)) return false;
+      // Must be moving to water adjacent to land on the far side
+      const farLand = this.getNeighbors(tr, tc).some(n => {
+        const t = this.getTile(n.r, n.c);
+        return t && !TERRAINS[t.terrain].water && !(n.r === unit.r && n.c === unit.c);
+      });
+      if (!farLand) return false;
+    }
     if (uType.domain === 'sea' && !terrain.water) return false;
 
     // Impassable
@@ -604,6 +613,26 @@ const Game = {
     if (tile.unit && tile.unit.owner === unit.owner) return false;
 
     return true;
+  },
+
+  hasLandBridge(playerIdx) {
+    const player = this.state.players[playerIdx];
+    if (!player || !player.wonders) return false;
+    return player.wonders.some(w => {
+      const wonder = WONDERS.find(wd => wd.id === w);
+      return wonder && wonder.landBridge;
+    });
+  },
+
+  getEmpireLandMvBonus(playerIdx) {
+    const player = this.state.players[playerIdx];
+    if (!player || !player.wonders) return 0;
+    let bonus = 0;
+    for (const wid of player.wonders) {
+      const w = WONDERS.find(wd => wd.id === wid);
+      if (w && w.empLandMv) bonus += w.empLandMv;
+    }
+    return bonus;
   },
 
   getMovementCost(unit, tr, tc) {
@@ -1892,10 +1921,11 @@ const Game = {
     this.processTurn(0);
 
     // Reset human units
+    const p0LandMvBonus = this.getEmpireLandMvBonus(0);
     for (const u of this.state.players[0].units) {
       const uType = this.getUnitType(u);
       const promos = this.getPromotionBonuses(u);
-      u.movementLeft = uType.mv + promos.mvBonus;
+      u.movementLeft = uType.mv + promos.mvBonus + (uType.domain === 'land' ? p0LandMvBonus : 0);
       u.hasActed = false;
     }
 
@@ -1905,10 +1935,11 @@ const Game = {
       AI.takeTurn(i);
       this.processTurn(i);
       // Reset AI units
+      const aiLandMvBonus = this.getEmpireLandMvBonus(i);
       for (const u of this.state.players[i].units) {
         const uType = this.getUnitType(u);
         const promos = this.getPromotionBonuses(u);
-        u.movementLeft = uType.mv + promos.mvBonus;
+        u.movementLeft = uType.mv + promos.mvBonus + (uType.domain === 'land' ? aiLandMvBonus : 0);
         u.hasActed = false;
       }
     }
