@@ -679,6 +679,17 @@ const ERA_MUSIC = {
   mars: 'assets/music/mars.mp3'
 };
 
+const LEADER_MUSIC = {
+  apollo: 'assets/music/leaders/apollo.mp3',
+  athena: 'assets/music/leaders/athena.mp3',
+  mars: 'assets/music/leaders/mars.mp3',
+  odin: 'assets/music/leaders/odin.mp3',
+  ra: 'assets/music/leaders/ra.mp3',
+  amaterasu: 'assets/music/leaders/amaterasu.mp3',
+  phi: 'assets/music/leaders/phi.mp3',
+  quetzalcoatl: 'assets/music/leaders/quetzalcoatl.mp3'
+};
+
 // Leader definitions — gods and mythological figures
 const LEADERS = [
   {id:'apollo', name:'Apollo', title:'God of Sun & Music', color:'#e94560', aggression:3, expansion:5, science:6, culture:8, portrait:'assets/leaders/apollo.png', greeting:'The sun rises on a new age. Let us see what light you bring to this world.', war:'You have chosen darkness. I shall bring the light of destruction upon your cities.', peace:'Let there be harmony between our peoples — a melody greater than any one voice.'},

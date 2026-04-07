@@ -1377,6 +1377,17 @@ const UI = {
       portrait.textContent = leader ? leader.charAt(0).toUpperCase() : '?';
     }
 
+    // Play leader-specific diplomacy music
+    if (leaderData && typeof LEADER_MUSIC !== 'undefined' && LEADER_MUSIC[leaderData.id]) {
+      this._savedEraMusic = this.currentEraMusic;
+      this.fadeOutMusic(() => {
+        this.musicPlayer.src = LEADER_MUSIC[leaderData.id];
+        this.musicPlayer.loop = true;
+        this.musicPlayer.play().catch(() => {});
+        this.fadeInMusic();
+      });
+    }
+
     nameEl.textContent = leader || 'Unknown';
 
     if (text === null) {
@@ -1401,6 +1412,14 @@ const UI = {
 
   closeDialogue() {
     document.getElementById('dialogue-overlay').classList.add('hidden');
+    // Restore era music after diplomacy
+    if (this._savedEraMusic) {
+      this.fadeOutMusic(() => {
+        this.currentEraMusic = null;
+        this.playEraMusic(this._savedEraMusic);
+      });
+      this._savedEraMusic = null;
+    }
   },
 
   _updateDialogueText(text) {
