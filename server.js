@@ -1,9 +1,11 @@
 const http = require('http');
+const https = require('https');
 const fs = require('fs');
 const path = require('path');
 
 const PORT = process.env.PORT || 8080;
-const PHI_URL = process.env.PHI_URL || 'http://localhost:11434';
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
+const PHI_URL = process.env.PHI_URL || 'http://localhost:8000';
 const MIME = {
   '.html': 'text/html', '.css': 'text/css', '.js': 'application/javascript',
   '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml',
@@ -11,28 +13,57 @@ const MIME = {
 };
 
 const SYSTEM_PROMPT = `You are the narrator and AI diplomat for Apollo's Time, a 4X civilization strategy game.
-You roleplay as AI civilization leaders with distinct personalities:
-- Caesar: Aggressive, imperious, speaks in short commanding sentences
-- Cleopatra: Diplomatic, cunning, flowery language
-- Genghis: Blunt, threatening, respects only strength
-- Victoria: Formal, proper, passive-aggressive
-- Montezuma: Mystical, unpredictable, references the gods
-- Bismarck: Calculating, pragmatic, speaks of realpolitik
-- Tokugawa: Honorable, poetic, uses metaphors
-- Catherine: Charming, manipulative, cultured
+The game features divine leaders (gods) with distinct personalities:
+- Apollo: Warm, radiant, poetic, speaks of light and music and harmony
+- Athena: Wise, strategic, measured, speaks of knowledge and reason
+- Mars: Aggressive, blunt, warlike, speaks of steel and conquest
+- Odin: Cryptic, wise, Norse-flavored, speaks of ravens and runes and fate
+- Ra: Ancient, powerful, speaks of the eternal sun and the Nile
+- Amaterasu: Serene, graceful, speaks of light, mirrors, and honor
+- Phi (Φ): Alien, intimidating, speaks of probability, wavefunctions, inevitability
+- Quetzalcoatl: Mystical, dual-natured (wind and serpent), speaks of balance and storms
 Keep responses SHORT (2-3 sentences max). Be dramatic and in-character.
 When narrating events, be vivid but brief.`;
 
-function callPhi(messages, maxTokens, callback) {
+function callLLM(messages, maxTokens, callback) {
+  if (!OPENAI_API_KEY) return callback(new Error('No API key'));
   const payload = JSON.stringify({
-    model: 'phi',
+    model: 'gpt-4o-mini',
     messages,
     max_tokens: maxTokens,
-    temperature: 0.8,
-    top_p: 0.9
+    temperature: 0.8
   });
   const opts = {
-    hostname: 'localhost', port: 11434, path: '/v1/chat/completions',
+    hostname: 'api.openai.com', port: 443, path: '/v1/chat/completions',
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${OPENAI_API_KEY}`,
+      'Content-Length': Buffer.byteLength(payload)
+    }
+  };
+  const req = https.request(opts, (r) => {
+    let chunks = [];
+    r.on('data', c => chunks.push(c));
+    r.on('end', () => {
+      try {
+        const data = JSON.parse(Buffer.concat(chunks).toString());
+        const text = data.choices?.[0]?.message?.content?.trim() || '';
+        callback(null, text);
+      } catch (e) { callback(e); }
+    });
+  });
+  req.on('error', (e) => callback(e));
+  req.setTimeout(15000, () => { req.destroy(); callback(new Error('timeout')); });
+  req.write(payload);
+  req.end();
+}
+
+function callPhi(messages, maxTokens, callback) {
+  const payload = JSON.stringify({ messages, max_tokens: maxTokens, temperature: 0.7 });
+  const url = new URL('/v1/chat/completions', PHI_URL);
+  const opts = {
+    hostname: url.hostname, port: url.port || 8000, path: url.pathname,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
   };
@@ -48,7 +79,7 @@ function callPhi(messages, maxTokens, callback) {
     });
   });
   req.on('error', (e) => callback(e));
-  req.setTimeout(30000, () => { req.destroy(); callback(new Error('timeout')); });
+  req.setTimeout(10000, () => { req.destroy(); callback(new Error('phi timeout')); });
   req.write(payload);
   req.end();
 }
@@ -75,8 +106,8 @@ http.createServer((req, res) => {
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: `You are ${leader}. The player's civilization is called ${player_name}. Relations: ${relation}/100 (${relStr}). Context: ${context}. Action: ${action}. Respond in character in 2-3 sentences.` }
       ];
-      callPhi(messages, 150, (err, text) => {
-        if (err) return sendJson(res, 503, { response: '...', error: 'AI sidecar unavailable' });
+      callLLM(messages, 150, (err, text) => {
+        if (err) return sendJson(res, 503, { response: '...', error: 'AI unavailable' });
         sendJson(res, 200, { response: text, leader });
       });
     });
