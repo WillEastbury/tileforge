@@ -3,56 +3,109 @@ const fs = require('fs');
 const path = require('path');
 
 const PORT = process.env.PORT || 8080;
-const PHI_URL = process.env.PHI_URL || 'http://localhost:8000';
+const PHI_URL = process.env.PHI_URL || 'http://localhost:11434';
 const MIME = {
   '.html': 'text/html', '.css': 'text/css', '.js': 'application/javascript',
-  '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml'
+  '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml',
+  '.mp3': 'audio/mpeg', '.mp4': 'video/mp4', '.webm': 'video/webm', '.ogg': 'audio/ogg'
 };
 
-function proxyToSidecar(path, body, res) {
-  const data = JSON.stringify(body);
-  const url = new URL(PHI_URL + path);
+const SYSTEM_PROMPT = `You are the narrator and AI diplomat for Apollo's Time, a 4X civilization strategy game.
+You roleplay as AI civilization leaders with distinct personalities:
+- Caesar: Aggressive, imperious, speaks in short commanding sentences
+- Cleopatra: Diplomatic, cunning, flowery language
+- Genghis: Blunt, threatening, respects only strength
+- Victoria: Formal, proper, passive-aggressive
+- Montezuma: Mystical, unpredictable, references the gods
+- Bismarck: Calculating, pragmatic, speaks of realpolitik
+- Tokugawa: Honorable, poetic, uses metaphors
+- Catherine: Charming, manipulative, cultured
+Keep responses SHORT (2-3 sentences max). Be dramatic and in-character.
+When narrating events, be vivid but brief.`;
+
+function callPhi(messages, maxTokens, callback) {
+  const payload = JSON.stringify({
+    model: 'phi',
+    messages,
+    max_tokens: maxTokens,
+    temperature: 0.8,
+    top_p: 0.9
+  });
   const opts = {
-    hostname: url.hostname, port: url.port, path: url.pathname,
-    method: 'POST', headers: {'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data)}
+    hostname: 'localhost', port: 11434, path: '/v1/chat/completions',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
   };
-  const proxy = http.request(opts, (proxyRes) => {
+  const req = http.request(opts, (r) => {
     let chunks = [];
-    proxyRes.on('data', c => chunks.push(c));
-    proxyRes.on('end', () => {
-      res.writeHead(proxyRes.statusCode, {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'});
-      res.end(Buffer.concat(chunks));
+    r.on('data', c => chunks.push(c));
+    r.on('end', () => {
+      try {
+        const data = JSON.parse(Buffer.concat(chunks).toString());
+        const text = data.choices?.[0]?.message?.content?.trim() || '';
+        callback(null, text);
+      } catch (e) { callback(e); }
     });
   });
-  proxy.on('error', () => {
-    res.writeHead(503, {'Content-Type': 'application/json'});
-    res.end(JSON.stringify({response: '...', error: 'AI sidecar unavailable'}));
-  });
-  proxy.setTimeout(15000, () => { proxy.destroy(); res.writeHead(504); res.end('{"response":"...","error":"timeout"}'); });
-  proxy.write(data);
-  proxy.end();
+  req.on('error', (e) => callback(e));
+  req.setTimeout(30000, () => { req.destroy(); callback(new Error('timeout')); });
+  req.write(payload);
+  req.end();
+}
+
+function sendJson(res, code, obj) {
+  res.writeHead(code, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+  res.end(JSON.stringify(obj));
+}
+
+function readBody(req, cb) {
+  let body = '';
+  req.on('data', c => body += c);
+  req.on('end', () => { try { cb(null, JSON.parse(body)); } catch (e) { cb(e); } });
 }
 
 http.createServer((req, res) => {
-  // API proxy to Phi sidecar
+  // Chat endpoint — leader dialogue
   if (req.url === '/api/chat' && req.method === 'POST') {
-    let body = '';
-    req.on('data', c => body += c);
-    req.on('end', () => { try { proxyToSidecar('/chat', JSON.parse(body), res); } catch(e) { res.writeHead(400); res.end('Bad request'); } });
+    readBody(req, (err, body) => {
+      if (err) return sendJson(res, 400, { error: 'Bad request' });
+      const { leader = 'Caesar', context = '', action = 'greet', relation = 0, player_name = 'Player' } = body;
+      const relStr = relation < -20 ? 'hostile' : relation < 20 ? 'neutral' : 'friendly';
+      const messages = [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: `You are ${leader}. The player's civilization is called ${player_name}. Relations: ${relation}/100 (${relStr}). Context: ${context}. Action: ${action}. Respond in character in 2-3 sentences.` }
+      ];
+      callPhi(messages, 150, (err, text) => {
+        if (err) return sendJson(res, 503, { response: '...', error: 'AI sidecar unavailable' });
+        sendJson(res, 200, { response: text, leader });
+      });
+    });
     return;
   }
+
+  // Narrate endpoint — event narration
   if (req.url === '/api/narrate' && req.method === 'POST') {
-    let body = '';
-    req.on('data', c => body += c);
-    req.on('end', () => { try { proxyToSidecar('/narrate', JSON.parse(body), res); } catch(e) { res.writeHead(400); res.end('Bad request'); } });
+    readBody(req, (err, body) => {
+      if (err) return sendJson(res, 400, { error: 'Bad request' });
+      const { event = '', context = '' } = body;
+      const messages = [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: `Narrate this game event dramatically in 1-2 sentences: Event: ${event}. Context: ${context}` }
+      ];
+      callPhi(messages, 100, (err, text) => {
+        if (err) return sendJson(res, 503, { response: '...', error: 'AI sidecar unavailable' });
+        sendJson(res, 200, { response: text });
+      });
+    });
     return;
   }
+
+  // Health check
   if (req.url === '/api/health') {
-    const url = new URL(PHI_URL + '/health');
-    http.get(url.href, (r) => {
+    http.get(`${PHI_URL}/v1/models`, (r) => {
       let d = ''; r.on('data', c => d += c);
-      r.on('end', () => { res.writeHead(200, {'Content-Type': 'application/json'}); res.end(d); });
-    }).on('error', () => { res.writeHead(200, {'Content-Type': 'application/json'}); res.end('{"status":"sidecar_offline"}'); });
+      r.on('end', () => sendJson(res, 200, { status: 'ok', models: d }));
+    }).on('error', () => sendJson(res, 200, { status: 'sidecar_offline' }));
     return;
   }
 
@@ -62,7 +115,7 @@ http.createServer((req, res) => {
   const ext = path.extname(filePath);
   fs.readFile(filePath, (err, data) => {
     if (err) { res.writeHead(404); res.end('Not found'); return; }
-    res.writeHead(200, {'Content-Type': MIME[ext] || 'application/octet-stream'});
+    res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
     res.end(data);
   });
 }).listen(PORT, () => console.log('Apollo\'s Time on port ' + PORT));

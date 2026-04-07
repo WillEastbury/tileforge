@@ -46,21 +46,29 @@ const Renderer = {
   animatingUnitId: null,
 
   init() {
-    const container = document.getElementById('map-container');
-    const rect = container.getBoundingClientRect();
+    try {
+      const container = document.getElementById('map-container');
+      const rect = container.getBoundingClientRect();
 
-    this.app = new PIXI.Application({
-      width: rect.width,
-      height: rect.height,
-      backgroundColor: 0x0a0a2e,
-      antialias: false,
-      resolution: window.devicePixelRatio || 1,
-      autoDensity: true,
-    });
-    container.appendChild(this.app.view);
+      this.app = new PIXI.Application({
+        width: rect.width || 800,
+        height: rect.height || 600,
+        backgroundColor: 0x0a0a2e,
+        antialias: false,
+        resolution: window.devicePixelRatio || 1,
+        autoDensity: true,
+        forceCanvas: !!window.__FORCE_CANVAS,
+      });
 
-    this.mapContainer = new PIXI.Container();
-    this.app.stage.addChild(this.mapContainer);
+      // Verify renderer was created successfully
+      if (!this.app.renderer) {
+        throw new Error('Renderer not created');
+      }
+
+      container.appendChild(this.app.view);
+
+      this.mapContainer = new PIXI.Container();
+      this.app.stage.addChild(this.mapContainer);
 
     // Layers
     this.terrainLayer = new PIXI.Container();
@@ -91,6 +99,12 @@ const Renderer = {
       this.app.renderer.resize(r.width, r.height);
       this.render();
     });
+    } catch(e) {
+      console.warn('Renderer init failed (headless?):', e.message);
+      this.app = null;
+      this.initialized = false;
+      this._headless = true;
+    }
   },
 
   generateTerrainTextures() {
@@ -2054,6 +2068,7 @@ const Renderer = {
 
   // Center camera on a position
   centerOn(r, c) {
+    if (!this.initialized) return;
     const ts = this.tileSize;
     const rw = Game.rowWidths[r];
     const totalMapWidth = Game.state.mapWidth * ts;
@@ -2089,7 +2104,7 @@ const Renderer = {
   // ========== MINIMAP ==========
 
   updateMinimap() {
-    if (!Game.state) return;
+    if (!Game.state || !this.initialized) return;
     const canvas = document.getElementById('minimap');
     const rect = canvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
