@@ -1305,11 +1305,13 @@ const Game = {
   },
 
   tileDistance(r1, c1, r2, c2) {
+    const mapH = this.state.mapHeight;
+    const mapW = this.state.mapWidth;
     const dr = Math.abs(r1 - r2);
     const dc = Math.abs(c1 - c2);
-    const mapW = this.state.mapWidth;
+    const wrappedDr = Math.min(dr, mapH - dr);
     const wrappedDc = Math.min(dc, mapW - dc);
-    return Math.max(dr, wrappedDc);
+    return Math.max(wrappedDr, wrappedDc);
   },
 
   // ========== BORDER EXPANSION ==========
@@ -1322,9 +1324,8 @@ const Game = {
     // Find closest unclaimed tile within range
     for (let dr = -maxRadius; dr <= maxRadius; dr++) {
       for (let dc = -maxRadius; dc <= maxRadius; dc++) {
-        const nr = city.r + dr;
+        const nr = ((city.r + dr) % this.state.mapHeight + this.state.mapHeight) % this.state.mapHeight;
         const nc = (city.c + dc + this.state.mapWidth) % this.state.mapWidth;
-        if (nr < 0 || nr >= this.state.mapHeight) continue;
         const tile = this.getTile(nr, nc);
         if (tile && tile.owner === -1) {
           const dist = Math.abs(dr) + Math.abs(dc);
