@@ -79,7 +79,7 @@ function callPhi(messages, maxTokens, callback) {
     });
   });
   req.on('error', (e) => callback(e));
-  req.setTimeout(10000, () => { req.destroy(); callback(new Error('phi timeout')); });
+  req.setTimeout(60000, () => { req.destroy(); callback(new Error('phi timeout')); });
   req.write(payload);
   req.end();
 }
