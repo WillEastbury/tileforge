@@ -124,8 +124,15 @@ http.createServer((req, res) => {
         { role: 'user', content: `Narrate this game event dramatically in 1-2 sentences: Event: ${event}. Context: ${context}` }
       ];
       callPhi(messages, 100, (err, text) => {
-        if (err) return sendJson(res, 503, { response: '...', error: 'AI sidecar unavailable' });
-        sendJson(res, 200, { response: text });
+        if (err) {
+          // Fall back to OpenAI if sidecar is unavailable
+          callLLM(messages, 100, (err2, text2) => {
+            if (err2) return sendJson(res, 503, { response: '...', error: 'AI unavailable' });
+            sendJson(res, 200, { response: text2, source: 'openai-fallback' });
+          });
+          return;
+        }
+        sendJson(res, 200, { response: text, source: 'bitnet-sidecar' });
       });
     });
     return;
