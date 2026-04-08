@@ -1,37 +1,54 @@
-FROM python:3.11-slim AS builder
+# --- Build stage: compile llama.cpp and download model ---
+FROM mcr.microsoft.com/cbl-mariner/base/core:2.0 AS builder
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    git cmake clang build-essential wget lld && rm -rf /var/lib/apt/lists/*
+RUN tdnf install -y git cmake gcc gcc-c++ make binutils glibc-devel kernel-headers curl ca-certificates && \
+    tdnf clean all
 
 WORKDIR /build
-RUN git clone --recursive https://github.com/microsoft/BitNet.git && \
-    cd BitNet && pip install -r requirements.txt
 
-# Download the pre-converted GGUF model (skip conversion entirely)
-RUN pip install huggingface_hub && \
-    huggingface-cli download microsoft/BitNet-b1.58-2B-4T --local-dir /build/BitNet/models/BitNet-b1.58-2B-4T && \
-    huggingface-cli download microsoft/bitnet-b1.58-2B-4T-gguf --local-dir /build/BitNet/models/BitNet-b1.58-2B-4T-gguf
+# Build llama.cpp (llama-server for native OpenAI-compatible API)
+RUN git clone --depth 1 https://github.com/ggerganov/llama.cpp.git && \
+    cd llama.cpp && \
+    cmake -B build -DLLAMA_CURL=OFF -DCMAKE_BUILD_TYPE=Release && \
+    cmake --build build --config Release -j$(nproc) --target llama-server llama-cli && \
+    ls -lh build/bin/llama-server build/bin/llama-cli
 
-# Build llama-cli binary only (conversion already done via pre-built GGUF)
-RUN cd /build/BitNet && \
-    sed -i 's/int8_t \* y_col = y + col \* by;/const int8_t * y_col = y + col * by;/' src/ggml-bitnet-mad.cpp && \
-    python setup_env.py -md models/BitNet-b1.58-2B-4T -q i2_s 2>&1; \
-    test -f /build/BitNet/build/bin/llama-cli && echo "llama-cli built OK"
-
-# Find the GGUF file from the pre-converted repo
-RUN ls -lh /build/BitNet/models/BitNet-b1.58-2B-4T-gguf/*.gguf
+# Download Qwen2.5-1.5B-Instruct Q4_K_M (~1GB, strong instruction following)
+RUN mkdir -p /build/models && \
+    curl -L -o /build/models/model.gguf \
+    "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf" && \
+    ls -lh /build/models/model.gguf
 
 # --- Runtime stage ---
-FROM python:3.11-slim
+FROM mcr.microsoft.com/cbl-mariner/base/core:2.0
 
-RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 && rm -rf /var/lib/apt/lists/*
+RUN tdnf install -y libgomp libstdc++ ca-certificates && tdnf clean all
 
 WORKDIR /app
-COPY --from=builder /build/BitNet /app/BitNet
-ENV LD_LIBRARY_PATH=/app/BitNet/build/3rdparty/llama.cpp/src:/app/BitNet/build/3rdparty/llama.cpp/ggml/src:/app/BitNet/build/bin:$LD_LIBRARY_PATH
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 
-COPY server.py /app/server.py
+# Copy server binary and all shared libraries from the build
+COPY --from=builder /build/llama.cpp/build/bin/llama-server /app/llama-server
+COPY --from=builder /build/models/model.gguf /app/model.gguf
+
+# Collect shared libs needed at runtime
+RUN mkdir -p /app/lib
+COPY --from=builder /build/llama.cpp/build/src/ /tmp/build-src/
+COPY --from=builder /build/llama.cpp/build/ggml/ /tmp/build-ggml/
+RUN find /tmp/build-src /tmp/build-ggml -name '*.so*' -exec cp {} /app/lib/ \; && \
+    rm -rf /tmp/build-src /tmp/build-ggml && \
+    ls -lh /app/lib/ && \
+    ls -lh /app/model.gguf
+
+ENV LD_LIBRARY_PATH=/app/lib:$LD_LIBRARY_PATH
 
 EXPOSE 8000
-CMD ["python", "server.py"]
+
+# llama-server: native OpenAI-compatible /v1/chat/completions and /v1/models
+CMD ["/app/llama-server", \
+     "-m", "/app/model.gguf", \
+     "--port", "8000", \
+     "--host", "0.0.0.0", \
+     "-ngl", "0", \
+     "-t", "2", \
+     "-c", "2048", \
+     "--chat-template", "chatml"]

@@ -13,6 +13,7 @@
   --green: #4caf50;
   --red: #e94560;
   --blue: #2196f3;
+  --purple: #9c27b0;
   --border: #2a3a5e;
   /* Affordance additions */
   --btn-shadow: 0 2px 4px rgba(0,0,0,0.4);
@@ -241,6 +242,40 @@ html, body { height: 100%; overflow: hidden; font-family: 'Segoe UI', system-ui,
 .tech-item .tech-cost { font-size: 11px; color: var(--text-dim); }
 @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(240,192,64,0.3); } 50% { box-shadow: 0 0 8px 2px rgba(240,192,64,0.3); } }
 
+/* Civics & Government Panel */
+#civics-panel { top: 50px; left: 50%; transform: translateX(-50%); width: 700px; max-width: 95vw; max-height: calc(100vh - 110px); overflow-y: auto; }
+.gov-section { margin-bottom: 16px; padding: 10px; background: var(--bg-dark); border-radius: 6px; border: 1px solid var(--border); }
+.gov-current { font-size: 13px; margin-bottom: 8px; }
+.gov-current b { color: var(--purple); }
+.gov-anarchy { color: var(--red); font-weight: 600; }
+.gov-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.gov-card { flex: 1 1 180px; padding: 8px; background: linear-gradient(to bottom, rgba(156,39,176,0.15) 0%, var(--bg-dark) 100%); border: 1px solid var(--purple); border-radius: 6px; font-size: 12px; }
+.gov-card:hover { background: rgba(156,39,176,0.25); }
+.gov-name { font-weight: 600; color: var(--purple); margin-bottom: 2px; }
+.gov-era { font-size: 10px; color: var(--text-dim); margin-bottom: 4px; }
+.gov-desc { color: var(--text-dim); margin-bottom: 6px; }
+.civic-btn-adopt { padding: 3px 10px; background: var(--purple); color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; }
+.civic-btn-adopt:hover { filter: brightness(1.2); }
+.civic-era { margin-bottom: 16px; }
+.civic-era h4 { color: var(--purple); margin-bottom: 8px; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; }
+.civic-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.civic-item {
+  flex: 0 0 calc(50% - 3px); padding: 8px; background: linear-gradient(to bottom, rgba(26,26,46,0.9) 0%, var(--bg-dark) 100%);
+  border: 1px solid var(--border); border-radius: 6px; font-size: 12px; transition: all 0.15s;
+}
+.civic-item.researched { border-color: var(--green); background: linear-gradient(to bottom, rgba(76,175,80,0.2) 0%, rgba(76,175,80,0.1) 100%); }
+.civic-item.available { border-color: var(--purple); cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.3), inset 0 1px 0 rgba(156,39,176,0.15); }
+.civic-item.available:hover { background: rgba(156,39,176,0.2); transform: translateY(-1px); box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+.civic-item.current { border-color: var(--gold); background: rgba(240,192,64,0.15); animation: pulse 1.5s infinite; }
+.civic-item.locked { opacity: 0.4; cursor: default; }
+.civic-item .civic-name { font-weight: 600; }
+.civic-item .civic-cost { font-size: 11px; color: var(--text-dim); }
+.civic-item .civic-unlocks { font-size: 10px; color: var(--purple); margin-top: 2px; }
+.civic-buttons { display: flex; gap: 4px; margin-top: 4px; }
+.civic-btn-research { padding: 2px 8px; background: var(--purple); color: #fff; border: none; border-radius: 3px; cursor: pointer; font-size: 11px; }
+.civic-btn-research:hover { filter: brightness(1.2); }
+.civic-btn-cancel { padding: 2px 8px; background: var(--red); color: #fff; border: none; border-radius: 3px; cursor: pointer; font-size: 11px; }
+
 /* City Panel Detail */
 .city-yields { display: flex; gap: 12px; flex-wrap: wrap; margin: 8px 0; }
 .city-yield { font-size: 13px; }
@@ -253,6 +288,7 @@ html, body { height: 100%; overflow: hidden; font-family: 'Segoe UI', system-ui,
 .build-option { padding: 6px 10px; background: linear-gradient(to bottom, rgba(26,26,46,0.8) 0%, var(--bg-dark) 100%); border: 1px solid var(--border); border-left: 3px solid var(--border); border-radius: 4px; margin-bottom: 3px; cursor: pointer; font-size: 12px; display: flex; justify-content: space-between; transition: all 0.15s; }
 .build-option:hover { border-color: var(--accent2); border-left-color: var(--accent2); transform: translateY(-1px); box-shadow: 0 2px 6px rgba(0,0,0,0.2); }
 .build-option.disabled { opacity: 0.35; cursor: default; }
+.artifact-badge { display:inline-block; padding:2px 6px; background:linear-gradient(135deg, rgba(218,165,32,0.15), rgba(218,165,32,0.05)); border:1px solid rgba(218,165,32,0.4); border-radius:3px; font-size:10px; color:var(--gold); cursor:help; white-space:nowrap; }
 
 /* Tile Info in Side Panel */
 .tile-info { padding: 4px 0; }
@@ -374,9 +410,7 @@ html, body { height: 100%; overflow: hidden; font-family: 'Segoe UI', system-ui,
 /* Golden Age Badge */
 .golden-age-badge { color: var(--gold); font-weight: 700; animation: pulse 1.5s infinite; }
 
-/* Faith Resource */
-#res-faith { font-size: 14px; white-space: nowrap; }
-#res-faith b { color: var(--gold); }
+
 
 /* Promotion Popup */
 #promotion-popup { top: 50%; left: 50%; transform: translate(-50%, -50%); width: 320px; max-height: 400px; overflow-y: auto; z-index: 150; }
@@ -681,6 +715,7 @@ html, body { height: 100%; overflow: hidden; font-family: 'Segoe UI', system-ui,
   .panel, .overlay-panel { max-width: 900px; }
   #city-panel { width: 750px; }
   #tech-panel { width: 850px; }
+  #civics-panel { width: 850px; }
   #diplomacy-panel { width: 650px; }
   .btn { padding: 14px 36px; font-size: 17px; }
   .btn-end-turn { padding: 12px 32px; font-size: 17px; }
@@ -693,6 +728,7 @@ html, body { height: 100%; overflow: hidden; font-family: 'Segoe UI', system-ui,
   .save-panel { width: 90vw; max-width: 500px; }
   #city-panel { width: 95vw; max-width: 600px; }
   #tech-panel { width: 95vw; max-width: 700px; }
+  #civics-panel { width: 95vw; max-width: 700px; }
   #diplomacy-panel { width: 95vw; max-width: 550px; }
   #game-menu { width: 80vw; max-width: 280px; }
   #promotion-popup { width: 90vw; max-width: 320px; }
@@ -732,6 +768,7 @@ html, body { height: 100%; overflow: hidden; font-family: 'Segoe UI', system-ui,
   .save-panel { width: 95vw; max-width: none; }
   #city-panel { width: 100vw; max-width: none; top: 0; left: 0; transform: none; max-height: 100vh; border-radius: 0; }
   #tech-panel { width: 100vw; max-width: none; top: 0; left: 0; transform: none; max-height: 100vh; border-radius: 0; }
+  #civics-panel { width: 100vw; max-width: none; top: 0; left: 0; transform: none; max-height: 100vh; border-radius: 0; }
   #diplomacy-panel { width: 100vw; max-width: none; top: 0; left: 0; transform: none; max-height: 100vh; border-radius: 0; }
   #game-menu { width: 90vw; max-width: none; }
   #promotion-popup { width: 95vw; max-width: none; }

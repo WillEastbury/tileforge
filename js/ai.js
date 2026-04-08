@@ -117,9 +117,6 @@ const AI = {
         if (b.sciMod) score += b.sciMod * 15;
         if (b.goldMod) score += b.goldMod * 10;
         if (b.prodMod) score += b.prodMod * 15;
-        // Prioritize faith buildings (shrines, temples)
-        if (b.faith) score += b.faith * 4;
-        if (b.id === 'shrine' || b.id === 'temple') score += 8;
         return {b, score};
       });
       scored.sort((a, b) => b.score - a.score);
@@ -131,6 +128,13 @@ const AI = {
     const wonders = Game.getAvailableWonders(city);
     if (wonders.length > 0 && Math.random() < 0.3) {
       Game.startBuild(city, 'wonder', wonders[0].id);
+      return;
+    }
+
+    // Build national buildings (high priority — one per empire)
+    const nationals = Game.getAvailableNationalBuildings(city);
+    if (nationals.length > 0 && Math.random() < 0.5) {
+      Game.startBuild(city, 'national', nationals[0].id);
       return;
     }
 
@@ -473,7 +477,6 @@ const AI = {
 
     const atWar = player.relations && Object.values(player.relations).some(r => r && r.war);
     const hasRoadTech = player.techs.has('the_wheel') || player.techs.has('engineering');
-    const hasShrine = player.cities.some(c => c.buildings && c.buildings.includes('shrine'));
 
     const scored = available.map(t => {
       let score = 0;
@@ -488,10 +491,6 @@ const AI = {
 
       // Need roads: prefer road-enabling techs
       if (!hasRoadTech && t.unlocks.some(u => u === 'road' || IMPROVEMENTS.find(imp => imp.id === u))) score += 8;
-
-      // Faith buildings: prefer theology if no shrine yet
-      if (!hasShrine && (t.id === 'theology' || t.id === 'mysticism')) score += 7;
-      if (t.unlocks.some(u => BUILDINGS.find(b => b.id === u && b.faith))) score += 5;
 
       // Prefer science/economy techs
       if (t.unlocks.some(u => BUILDINGS.find(b => b.id === u && b.sci > 0))) score += 4;
@@ -508,5 +507,65 @@ const AI = {
     scored.sort((a, b) => b.score - a.score);
     player.currentResearch = scored[0].t.id;
     player.researchProgress = 0;
+  },
+
+  chooseCivic(player) {
+    if (player.currentCivic) return;
+    const available = Game.getAvailableCivics(player);
+    if (available.length === 0) return;
+
+    const leader = LEADERS.find(l => l.name === player.name);
+    const preferredGovs = leader && leader.politics ? leader.politics.preferredGovs : [];
+
+    const scored = available.map(c => {
+      let score = 0;
+      score -= ERAS.indexOf(c.era) * 5;
+      // Prefer civics that unlock governments
+      const unlockedGovs = GOVERNMENTS.filter(g => g.unlockedBy === c.id);
+      score += unlockedGovs.length * 10;
+      // Strongly prefer civics that unlock preferred governments
+      for (const g of unlockedGovs) {
+        if (preferredGovs.includes(g.id)) score += 20;
+      }
+      score -= c.cost * 0.01;
+      return {c, score};
+    });
+
+    scored.sort((a, b) => b.score - a.score);
+    player.currentCivic = scored[0].c.id;
+    player.civicProgress = 0;
+  },
+
+  chooseGovernment(player) {
+    const available = Game.getAvailableGovernments(player);
+    if (available.length === 0) return;
+
+    const leader = LEADERS.find(l => l.name === player.name);
+    const preferredGovs = leader && leader.politics ? leader.politics.preferredGovs : [];
+    const influence = leader && leader.politics ? leader.politics.influence : 5;
+
+    let best = null;
+    let bestScore = -Infinity;
+
+    for (const gov of available) {
+      let score = ERAS.indexOf(gov.era) * 3; // prefer later-era govs
+      const b = gov.bonuses;
+      // Score based on bonuses
+      if (b.prod) score += b.prod * 50;
+      if (b.sci) score += b.sci * 40;
+      if (b.gold) score += b.gold * 35;
+      if (b.cul) score += b.cul * 30;
+      if (b.combat) score += b.combat * 45;
+      if (b.hap) score += b.hap * 5;
+      // Penalties
+      if (gov.penalty && gov.penalty.hap) score += gov.penalty.hap * 8;
+      // Leader political preference — heavily weighted by influence
+      if (preferredGovs.includes(gov.id)) score += influence * 5;
+      if (score > bestScore) { bestScore = score; best = gov; }
+    }
+
+    if (best && best.id !== player.government) {
+      Game.adoptGovernment(player, best.id);
+    }
   }
 };

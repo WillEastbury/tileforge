@@ -56,6 +56,38 @@ function cancelResearch() {
   UI.notify('Research cancelled.');
 }
 
+function selectCivic(civicId) {
+  const p = Game.state.players[0];
+  p.currentCivic = civicId;
+  p.civicProgress = 0;
+  UI.renderCivicsTree();
+  UI.notify('Developing civic: ' + CIVICS.find(c => c.id === civicId).name);
+}
+
+function cancelCivic() {
+  const p = Game.state.players[0];
+  p.currentCivic = null;
+  p.civicProgress = 0;
+  UI.renderCivicsTree();
+  UI.notify('Civic development cancelled.');
+}
+
+function adoptGovernment(govId) {
+  const p = Game.state.players[0];
+  const gov = GOVERNMENTS.find(g => g.id === govId);
+  if (!gov) return;
+  const prevGov = GOVERNMENTS.find(g => g.id === p.government) || {era:'caveman'};
+  const anarchyTurns = p.government === 'chiefdom' ? 0 : Math.max(1, Math.abs(ERAS.indexOf(gov.era) - ERAS.indexOf(prevGov.era)));
+  if (anarchyTurns > 0 && !confirm(`Adopting ${gov.name} will cause ${anarchyTurns} turn${anarchyTurns > 1 ? 's' : ''} of anarchy (all yields halved). Proceed?`)) return;
+  Game.adoptGovernment(p, govId);
+  UI.renderCivicsTree();
+  if (anarchyTurns > 0) {
+    UI.notify('Revolution! ' + anarchyTurns + ' turn' + (anarchyTurns > 1 ? 's' : '') + ' of anarchy as you transition to ' + gov.name + '.');
+  } else {
+    UI.notify('Government adopted: ' + gov.name);
+  }
+}
+
 function buildInCity(cityId, type, itemId) {
   const city = Game.findCityById(cityId);
   if (!city || city.owner !== 0) return;

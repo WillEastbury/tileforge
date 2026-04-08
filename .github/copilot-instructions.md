@@ -23,11 +23,17 @@ There is no build step — all JS is vanilla ES5/browser globals loaded via `<sc
 for f in js/*.js; do node -c "$f"; done
 ```
 
-### Running browser tests
+### Running Playwright game tests
+
+Playwright tests validate game functionality in a real browser. **Prefer running in CI (GitHub Actions), not locally** — they are resource-heavy and frequently crash local sessions.
 
 ```bash
-npx playwright test test-browser.mjs
+# In CI (automatic via GitHub Actions on push to main)
+# Locally (only if needed — will consume significant resources):
+npx playwright test
 ```
+
+Config: `playwright.config.js` — single worker, 60s timeout, 1024×768 viewport. The web server (`node server.js`) auto-starts via Playwright's `webServer` config.
 
 ## Architecture
 
@@ -103,18 +109,67 @@ az webapp restart --name tileforge-game --resource-group tileforge-rg
 - **ACR**: tileforgeacr.azurecr.io
 - **Sidecar config**: sitecontainers.json (main on 8080 + phi on 8000)
 
-### Git workflow
+### CI/CD — GitHub Actions
 
-Single `main` branch, push directly. No CI pipeline — deploy manually.
+CI/CD runs via GitHub Actions (`.github/workflows/ci-deploy.yml`):
+- On push to `main`: **Playwright game tests run on the GitHub Actions runner** (not locally — they are resource-heavy and crash local sessions), then auto-deploy to Azure
+- The BitNet sidecar Docker image is built and pushed to ACR (`tileforgeacr`)
+- Azure OIDC federated credential (`tileforge-deploy` app) handles auth
+- GitHub repo secrets: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`
 
 ```bash
 cd /root/tileforge
 git add -A && git commit -m "description" && git push
+# CI runs tests + deploys automatically
 ```
+
+### Asset Generation — Environment Variables
+
+The following environment variables should be set in `~/.bashrc` (or exported manually) for asset generation scripts in `/source/ApollosTime/`:
+
+- **`OPENAI_API_KEY`** — Required by `generate_unit_sprites.py` (DALL-E) and `generate_wonder_videos.py` (Sora)
+- **`SUNO_API_KEY`** — Required by `generate_music.py` and `generate_leader_music.py`
+
+These keys are **not** stored in the repo or in these instructions. If they're missing, ask the user to export them before running generation scripts.
+
+Generation scripts:
+- `generate_unit_sprites.py` — DALL-E pixel art sprites for units → `assets/units/{id}.png`
+- `generate_wonder_videos.py` — Sora cinematic videos for wonders → `assets/video/wonders/{id}.mp4`
+- `generate_music.py` — Suno background music → `assets/music/`
+- `generate_leader_music.py` — Suno leader theme music → `assets/leaders/`
 
 ## Known issues / incomplete areas
 
 - Container startup sometimes shows "StartupInterruption" — may need to fall back to zip deploy
 - Game has limited real-browser testing; most validation was headless via Node.js VM
 - AI plays conservatively and may not use all 16 game systems effectively
-- ~65% of the original design doc content is implemented (missing: minor factions spawning, religion player choice UI, full map camera wrapping, governments/civics)
+- ~75% of the original design doc content is implemented; religion/faith and minor factions have been deliberately removed from scope
+- BitNet sidecar narration is ~36s per request — game UX may need async/non-blocking narration
+
+## Session Recovery — READ THIS FIRST
+
+**Sessions frequently crash on this device.** At the start of every new session, you MUST:
+
+1. **Query the session store** for recent sessions in this folder:
+   ```sql
+   SELECT s.id, s.summary, s.created_at
+   FROM sessions s
+   WHERE s.cwd LIKE '%tileforge%'
+   ORDER BY s.created_at DESC LIMIT 5;
+   ```
+2. **Pull checkpoint details** from the most recent session:
+   ```sql
+   SELECT checkpoint_number, title, overview, work_done, next_steps
+   FROM checkpoints
+   WHERE session_id = '<latest_session_id>'
+   ORDER BY checkpoint_number DESC LIMIT 1;
+   ```
+3. **Check for outstanding todos** in the SQL database:
+   ```sql
+   SELECT id, title, status, description FROM todos WHERE status != 'done' ORDER BY status;
+   ```
+4. **Present a brief review** to the user summarizing:
+   - What was being worked on in the last session
+   - What's done vs still pending
+   - Suggested next steps from the checkpoint
+5. **Ask the user** what to pick up or work on next before diving in

@@ -148,16 +148,13 @@ const UI = {
       eraEl.textContent = eraText;
     }
 
-    // Faith / Religion indicator
-    const faithEl = document.getElementById('res-faith');
-    if (faithEl) {
-      let faithText = '<b>' + Math.floor(p.faith || 0) + '</b>';
-      if (p.religion) faithText += ' <span style="color:var(--accent2)">' + p.religion + '</span>';
-      else if (p.pantheon) {
-        const pan = Game.PANTHEONS.find(pa => pa.id === p.pantheon);
-        faithText += ' <span style="color:var(--text-dim)">' + (pan ? pan.name : p.pantheon) + '</span>';
-      }
-      faithEl.innerHTML = '🙏 ' + faithText;
+    // Government indicator
+    const gov = GOVERNMENTS.find(g => g.id === (p.government || 'chiefdom'));
+    if (gov) {
+      const govBadge = p.anarchyTurns > 0
+        ? ' <span style="color:var(--red);font-size:11px">⚠️ Anarchy (' + p.anarchyTurns + 't)</span>'
+        : ' <span style="color:var(--purple);font-size:11px">🏛 ' + gov.name + '</span>';
+      eraEl.innerHTML += govBadge;
     }
 
     // Resource tooltip hover handlers
@@ -573,7 +570,31 @@ const UI = {
       </div>`;
     }
 
+    // National Buildings
+    const availNational = Game.getAvailableNationalBuildings(city);
+    for (const nb of availNational) {
+      const turns = Math.max(1, Math.ceil(nb.cost / Math.max(1, yields.prod)));
+      html += `<div class="build-option" onclick="buildInCity(${city.id},'national','${nb.id}')" style="border-color:var(--culture)">
+        <span>🏛️ ${nb.name}</span>
+        <span style="color:var(--culture)">${turns}t | ${nb.desc}</span>
+      </div>`;
+    }
+
     html += '</div>';
+
+    // Artifacts collection display
+    if (p.artifacts && p.artifacts.length > 0) {
+      html += '<div style="margin-top:8px;border-top:1px solid var(--border);padding-top:6px">';
+      html += '<b>📜 Artifacts (' + p.artifacts.length + '/' + ARTIFACTS.length + ')</b>';
+      html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">';
+      for (const aId of p.artifacts) {
+        const a = ARTIFACTS.find(ar => ar.id === aId);
+        if (!a) continue;
+        const bonusStr = Object.entries(a.bonus).map(([k,v]) => '+' + v + ' ' + k).join(', ');
+        html += `<span class="artifact-badge" title="${a.desc}\n${bonusStr}">${a.name}</span>`;
+      }
+      html += '</div></div>';
+    }
 
     document.getElementById('city-detail').innerHTML = html;
   },
@@ -660,6 +681,119 @@ const UI = {
       sci += Game.getCityYields(city).sci;
     }
     return sci;
+  },
+
+  getPlayerCulture() {
+    const p = Game.state.players[0];
+    let cul = 0;
+    for (const city of p.cities) {
+      cul += Game.getCityYields(city).cul;
+    }
+    return cul;
+  },
+
+  // ========== CIVICS & GOVERNMENT ==========
+
+  showCivicsTree() {
+    this.closeCityPanel();
+    const panel = document.getElementById('civics-panel');
+    panel.classList.remove('hidden');
+    this.renderCivicsTree();
+  },
+
+  closeCivicsTree() {
+    document.getElementById('civics-panel').classList.add('hidden');
+  },
+
+  renderCivicsTree() {
+    const p = Game.state.players[0];
+    const available = Game.getAvailableCivics(p);
+    const availIds = new Set(available.map(c => c.id));
+
+    // Government section
+    let govHtml = '<div class="gov-section">';
+    const currentGov = GOVERNMENTS.find(g => g.id === (p.government || 'chiefdom'));
+    if (p.anarchyTurns > 0) {
+      govHtml += `<div class="gov-current gov-anarchy">⚠️ <b>ANARCHY</b> — ${p.anarchyTurns} turn${p.anarchyTurns > 1 ? 's' : ''} remaining. All yields halved.</div>`;
+    } else {
+      govHtml += `<div class="gov-current">Current: <b>${currentGov ? currentGov.name : 'Chiefdom'}</b> ${currentGov ? '— ' + currentGov.desc : ''}</div>`;
+    }
+
+    const availGovs = Game.getAvailableGovernments(p);
+    if (availGovs.length > 0) {
+      govHtml += '<div class="gov-grid">';
+      for (const gov of availGovs) {
+        govHtml += `<div class="gov-card">
+          <div class="gov-name">${gov.name}</div>
+          <div class="gov-era">${ERA_ICONS[gov.era]} ${ERA_NAMES[gov.era]}</div>
+          <div class="gov-desc">${gov.desc}</div>
+          <button class="civic-btn-adopt" onclick="event.stopPropagation();adoptGovernment('${gov.id}')">Adopt</button>
+        </div>`;
+      }
+      govHtml += '</div>';
+    }
+    govHtml += '</div>';
+    document.getElementById('civics-gov-content').innerHTML = govHtml;
+
+    // Civics tree section
+    let html = '';
+
+    // Current civic progress
+    if (p.currentCivic) {
+      const civic = CIVICS.find(c => c.id === p.currentCivic);
+      const pct = Math.floor((p.civicProgress / civic.cost) * 100);
+      const turns = Math.max(1, Math.ceil((civic.cost - p.civicProgress) / Math.max(1, this.getPlayerCulture())));
+      html += `<div style="margin-bottom:12px;padding:8px;background:var(--bg-dark);border-radius:6px">
+        <b>Developing:</b> ${civic.name} (${pct}% — ${turns}t)
+        <div class="progress-bar" style="margin-top:4px;width:100%;height:8px;background:var(--border);border-radius:4px">
+          <div style="height:100%;width:${pct}%;background:var(--purple);border-radius:4px"></div>
+        </div>
+      </div>`;
+    } else {
+      html += `<div style="margin-bottom:12px;padding:8px;background:var(--bg-dark);border-radius:6px;color:var(--gold)">
+        <b>Select a civic to develop</b>
+      </div>`;
+    }
+
+    for (const era of ERAS) {
+      const eraCivics = CIVICS.filter(c => c.era === era);
+      if (eraCivics.length === 0) continue;
+
+      html += `<div class="civic-era">
+        <h4>${ERA_ICONS[era]} ${ERA_NAMES[era]}</h4>
+        <div class="civic-grid">`;
+
+      for (const civic of eraCivics) {
+        let cls = 'locked';
+        if (p.civics.has(civic.id)) cls = 'researched';
+        else if (p.currentCivic === civic.id) cls = 'current';
+        else if (availIds.has(civic.id)) cls = 'available';
+
+        const turns = p.currentCivic === civic.id
+          ? Math.max(1, Math.ceil((civic.cost - p.civicProgress) / Math.max(1, this.getPlayerCulture())))
+          : '';
+
+        // Show what governments this civic unlocks
+        const unlockedGovs = GOVERNMENTS.filter(g => g.unlockedBy === civic.id);
+        const govBadge = unlockedGovs.length > 0
+          ? `<div class="civic-unlocks">🏛 ${unlockedGovs.map(g => g.name).join(', ')}</div>`
+          : '';
+
+        html += `<div class="civic-item ${cls}">
+          <div class="civic-name">${civic.name}</div>
+          <div class="civic-cost">${cls === 'current' ? `Developing... ${turns}t` : `🎭 ${civic.cost}`}</div>
+          ${govBadge}
+          <div class="civic-buttons">
+            ${cls === 'available' ? `<button class="civic-btn-research" onclick="event.stopPropagation();selectCivic('${civic.id}')">Develop</button>` : ''}
+            ${cls === 'current' ? `<button class="civic-btn-cancel" onclick="event.stopPropagation();cancelCivic()">Cancel</button>` : ''}
+          </div>
+        </div>`;
+      }
+
+      html += '</div></div>';
+    }
+
+    document.getElementById('civics-tree-content').innerHTML = html;
   },
 
   // ========== ENCYCLOPEDIA ==========
@@ -1624,17 +1758,44 @@ const UI = {
   currentEraMusic: null,
   musicEnabled: true,
   musicVolume: 0.3,
+  eraTrackIndex: {},  // tracks which variant was last played per era
 
   initMusic() {
     this.musicPlayer = new Audio();
-    this.musicPlayer.loop = true;
+    this.musicPlayer.loop = false;
     this.musicPlayer.volume = this.musicVolume;
+    // When a track ends, play the next variant for the same era
+    this.musicPlayer.addEventListener('ended', () => {
+      if (this.musicEnabled && this.currentEraMusic) {
+        this.playNextTrack(this.currentEraMusic);
+      }
+    });
+  },
+
+  pickNextTrack(era) {
+    const tracks = ERA_MUSIC[era];
+    if (!tracks || tracks.length === 0) return null;
+    if (tracks.length === 1) return tracks[0];
+    const lastIdx = this.eraTrackIndex[era] ?? -1;
+    // Pick a random track that isn't the one we just played
+    let idx;
+    do { idx = Math.floor(Math.random() * tracks.length); } while (idx === lastIdx && tracks.length > 1);
+    this.eraTrackIndex[era] = idx;
+    return tracks[idx];
+  },
+
+  playNextTrack(era) {
+    const track = this.pickNextTrack(era);
+    if (!track) return;
+    this.musicPlayer.src = track;
+    this.musicPlayer.play().catch(() => {});
+    this.fadeInMusic();
   },
 
   playEraMusic(era) {
     if (!this.musicEnabled || this.currentEraMusic === era) return;
     this.currentEraMusic = era;
-    const track = ERA_MUSIC[era];
+    const track = this.pickNextTrack(era);
     if (!track) return;
     if (this.musicPlayer.src) {
       this.fadeOutMusic(() => {

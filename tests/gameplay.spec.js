@@ -124,7 +124,7 @@ test.describe('New Game Setup', () => {
 test.describe('Game Screen — Top Bar', () => {
   test('resource bar shows all resources', async ({ page }) => {
     await startGame(page, { mapSize: 'small', aiCount: '1', difficulty: 0 });
-    for (const id of ['res-food', 'res-prod', 'res-money', 'res-science', 'res-culture', 'res-history', 'res-faith']) {
+    for (const id of ['res-food', 'res-prod', 'res-money', 'res-science', 'res-culture', 'res-history']) {
       await expect(page.locator('#' + id)).toBeVisible();
     }
   });

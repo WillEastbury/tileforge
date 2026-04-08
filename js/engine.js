@@ -84,10 +84,13 @@ const Game = {
     // Place starting positions
     this.placeStartingPositions();
 
-    // Grant starting techs
+    // Grant starting techs and civics
     for (const p of this.state.players) {
       for (const t of TECHS.filter(t => t.era === 'caveman' && t.prereqs.length === 0)) {
         p.techs.add(t.id);
+      }
+      for (const c of CIVICS.filter(c => c.era === 'caveman' && c.prereqs.length === 0)) {
+        p.civics.add(c.id);
       }
       // AI starting bonuses for higher difficulty
       if (p.isAI && diff.startBonus) {
@@ -124,14 +127,19 @@ const Game = {
       combatMod: isAI ? diff.aiCombat : 1.0,
       strategicRes: {}, // resourceId -> count
       cultureAccum: {}, // cityId -> accumulated culture for border expansion
-      greatPeoplePoints: {scientist:0, engineer:0, artist:0, general:0, merchant:0, prophet:0},
+      greatPeoplePoints: {scientist:0, engineer:0, artist:0, general:0, merchant:0},
       greatPeopleThreshold: 100, // increases each time a GP spawns
-      faith: 0,
-      pantheon: null,
-      religion: null,
       relations: {}, // playerId -> {score, treaties: Set}
       tradeRoutes: [],
-      wonders: []
+      wonders: [],
+      nationalBuildings: [], // national building ids built
+      artifacts: [],         // artifact ids collected
+      // Civics & Government
+      civics: new Set(),
+      currentCivic: null,
+      civicProgress: 0,
+      government: 'chiefdom',
+      anarchyTurns: 0
     };
   },
 
@@ -163,97 +171,256 @@ const Game = {
 
   generateTerrain() {
     const {mapWidth, mapHeight} = this.state;
-    const seed = Math.random() * 10000;
 
-    // Simple Perlin-like noise using sin combinations
-    const noise = (x, y, s) => {
-      const n = Math.sin(x * 12.9898 * s + y * 78.233 * s + seed) * 43758.5453;
-      return n - Math.floor(n);
+    // Elevation map: start as ocean, grow continents
+    const elev = [];
+    const moist = [];
+    for (let r = 0; r < mapHeight; r++) {
+      elev.push(new Float32Array(mapWidth));
+      moist.push(new Float32Array(mapWidth));
+    }
+
+    // --- Continent placement ---
+    const area = mapWidth * mapHeight;
+    const numContinents = Math.floor(3 + Math.random() * 4); // 3-6
+    const targetLand = 0.35; // ~35% land
+    const maxLandTiles = Math.floor(area * targetLand);
+    let landCount = 0;
+
+    // Wrap-safe distance helper
+    const wrapDist = (r1, c1, r2, c2) => {
+      const dr = Math.min(Math.abs(r1 - r2), mapHeight - Math.abs(r1 - r2));
+      const dc = Math.min(Math.abs(c1 - c2), mapWidth - Math.abs(c1 - c2));
+      return Math.sqrt(dr * dr + dc * dc);
     };
-    const fbm = (x, y, oct) => {
-      let v = 0, amp = 0.5, freq = 1;
-      for (let i = 0; i < oct; i++) {
-        v += amp * noise(x * freq, y * freq, 1.0);
+
+    // Place continent seeds away from poles and spaced apart
+    const seeds = [];
+    for (let i = 0; i < numContinents; i++) {
+      let best = null, bestMinDist = -1;
+      for (let attempt = 0; attempt < 60; attempt++) {
+        const sr = Math.floor(mapHeight * 0.12 + Math.random() * mapHeight * 0.76);
+        const sc = Math.floor(Math.random() * mapWidth);
+        let minDist = Infinity;
+        for (const s of seeds) minDist = Math.min(minDist, wrapDist(sr, sc, s.r, s.c));
+        if (minDist > bestMinDist) { best = {r: sr, c: sc}; bestMinDist = minDist; }
+      }
+      seeds.push(best);
+    }
+
+    // Grow each continent using random walk expansion
+    const landTiles = new Set();
+    const budgets = [];
+    const totalBudget = maxLandTiles;
+    // Distribute land budget unevenly for variety
+    let budgetSum = 0;
+    for (let i = 0; i < numContinents; i++) {
+      const b = 0.5 + Math.random();
+      budgets.push(b);
+      budgetSum += b;
+    }
+    for (let i = 0; i < numContinents; i++) {
+      budgets[i] = Math.floor((budgets[i] / budgetSum) * totalBudget);
+    }
+
+    for (let ci = 0; ci < numContinents; ci++) {
+      const frontier = [];
+      const key = (r, c) => r * mapWidth + c;
+      const addFrontier = (r, c) => {
+        const k = key(r, c);
+        if (!landTiles.has(k)) frontier.push({r, c});
+      };
+      addFrontier(seeds[ci].r, seeds[ci].c);
+      let placed = 0;
+      while (frontier.length > 0 && placed < budgets[ci]) {
+        // Pick from frontier with bias toward center (more compact continents)
+        const idx = Math.random() < 0.65
+          ? Math.floor(Math.random() * Math.min(frontier.length, Math.max(8, frontier.length * 0.3)))
+          : Math.floor(Math.random() * frontier.length);
+        const {r, c} = frontier.splice(idx, 1)[0];
+        const k = key(r, c);
+        if (landTiles.has(k)) continue;
+        // Avoid poles
+        const lat = Math.abs(-90 + (r + 0.5) * (180 / mapHeight));
+        if (lat > 78) continue;
+        landTiles.add(k);
+        elev[r][c] = 0.5 + Math.random() * 0.3; // base land elevation
+        placed++;
+        // Add neighbors to frontier
+        const dirs = [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]];
+        for (const [dr, dc] of dirs) {
+          const nr = (r + dr + mapHeight) % mapHeight;
+          const nc = (c + dc + mapWidth) % mapWidth;
+          if (!landTiles.has(key(nr, nc)) && Math.random() < 0.7) addFrontier(nr, nc);
+        }
+      }
+    }
+    landCount = landTiles.size;
+
+    // --- Smooth elevation with multi-pass blur ---
+    for (let pass = 0; pass < 3; pass++) {
+      const temp = [];
+      for (let r = 0; r < mapHeight; r++) temp.push(new Float32Array(mapWidth));
+      for (let r = 0; r < mapHeight; r++) {
+        for (let c = 0; c < mapWidth; c++) {
+          let sum = elev[r][c] * 2, count = 2;
+          const dirs = [[0,1],[0,-1],[1,0],[-1,0]];
+          for (const [dr, dc] of dirs) {
+            const nr = (r + dr + mapHeight) % mapHeight;
+            const nc = (c + dc + mapWidth) % mapWidth;
+            sum += elev[nr][nc]; count++;
+          }
+          temp[r][c] = sum / count;
+        }
+      }
+      for (let r = 0; r < mapHeight; r++) {
+        for (let c = 0; c < mapWidth; c++) elev[r][c] = temp[r][c];
+      }
+    }
+
+    // --- Add mountain ranges along continent interiors ---
+    const seed2 = Math.random() * 10000;
+    const ridgeNoise = (x, y) => {
+      const n = Math.sin(x * 17.31 * seed2 + y * 43.17) * 43758.5453;
+      return (n - Math.floor(n));
+    };
+    for (let r = 0; r < mapHeight; r++) {
+      for (let c = 0; c < mapWidth; c++) {
+        if (elev[r][c] < 0.3) continue; // skip water
+        // Count land neighbors (interior detection)
+        let landNeighbors = 0;
+        const dirs = [[0,1],[0,-1],[1,0],[-1,0],[0,2],[0,-2],[2,0],[-2,0]];
+        for (const [dr, dc] of dirs) {
+          const nr = (r + dr + mapHeight) % mapHeight;
+          const nc = (c + dc + mapWidth) % mapWidth;
+          if (elev[nr][nc] > 0.3) landNeighbors++;
+        }
+        if (landNeighbors >= 6) {
+          const rn = ridgeNoise(r * 0.15, c * 0.15);
+          if (rn > 0.72) elev[r][c] = Math.min(1.0, elev[r][c] + 0.3 + rn * 0.15);
+          else if (rn > 0.6) elev[r][c] = Math.min(0.9, elev[r][c] + 0.15);
+        }
+      }
+    }
+
+    // --- Generate moisture map ---
+    const moistSeed = Math.random() * 10000;
+    const moistNoise = (x, y) => {
+      let v = 0, amp = 1, freq = 1;
+      for (let o = 0; o < 4; o++) {
+        const n = Math.sin(x * freq * 12.98 + y * freq * 78.23 + moistSeed + o * 31.7) * 43758.5453;
+        v += amp * (n - Math.floor(n));
         amp *= 0.5; freq *= 2;
       }
-      return v;
+      return v / 1.875;
     };
+    for (let r = 0; r < mapHeight; r++) {
+      for (let c = 0; c < mapWidth; c++) {
+        // Base moisture from noise + latitude influence (tropics wetter)
+        const lat = Math.abs(-90 + (r + 0.5) * (180 / mapHeight));
+        const tropicalBoost = lat < 30 ? 0.15 : 0;
+        const coastBoost = elev[r][c] > 0.3 && elev[r][c] < 0.5 ? 0.1 : 0;
+        moist[r][c] = Math.min(1, moistNoise(r * 0.08, c * 0.08) + tropicalBoost + coastBoost);
+      }
+    }
 
+    // --- Assign terrain types from elevation, moisture, latitude ---
     for (let r = 0; r < mapHeight; r++) {
       const lat = -90 + (r + 0.5) * (180 / mapHeight);
       const absLat = Math.abs(lat);
-      const w = this.rowWidths[r];
-      for (let c = 0; c < w; c++) {
-        const lon = (c / w) * 360;
-        const nx = lon / 360;
-        const ny = r / mapHeight;
-
-        const elev = fbm(nx * 4, ny * 4, 5);
-        const moist = fbm(nx * 3 + 100, ny * 3 + 100, 4);
-        const temp = 1.0 - (absLat / 90); // 1=equator, 0=pole
-
+      const temp = 1.0 - (absLat / 90);
+      for (let c = 0; c < mapWidth; c++) {
+        const e = elev[r][c];
+        const m = moist[r][c];
         let terrain;
 
-        // Poles
+        // Polar ice
         if (absLat > 82) {
           terrain = 0; // Ice Sheet
-        } else if (absLat > 70) {
-          terrain = elev > 0.55 ? 1 : (elev > 0.4 ? 1 : 3); // Tundra or Frozen Coast
-          if (elev < 0.35) terrain = 3;
+        } else if (absLat > 72 && e < 0.3) {
+          terrain = 3; // Frozen Coast
+        } else if (absLat > 72) {
+          terrain = 1; // Tundra
         }
-        // Water vs land based on elevation
-        else if (elev < 0.38) {
-          // Water
-          if (elev < 0.25) terrain = 17; // Ocean
-          else if (temp > 0.6 && moist > 0.6) terrain = 18; // Reef
-          else terrain = 16; // Coast
+        // Water
+        else if (e < 0.15) {
+          terrain = 17; // Deep Ocean
+        } else if (e < 0.3) {
+          // Check if near land for coast vs ocean
+          let nearLand = false;
+          for (let dr = -2; dr <= 2; dr++) {
+            for (let dc = -2; dc <= 2; dc++) {
+              const nr = (r + dr + mapHeight) % mapHeight;
+              const nc = (c + dc + mapWidth) % mapWidth;
+              if (elev[nr][nc] >= 0.3) { nearLand = true; break; }
+            }
+            if (nearLand) break;
+          }
+          if (nearLand) {
+            terrain = (temp > 0.6 && m > 0.6 && Math.random() < 0.15) ? 18 : 16; // Reef or Coast
+          } else {
+            terrain = 17; // Ocean
+          }
         }
-        // Land
+        // Land biomes
+        else if (e > 0.85) {
+          terrain = 8; // Mountains
+        } else if (e > 0.75) {
+          terrain = absLat > 55 ? (m > 0.5 ? 2 : 1) : 7; // Hills (or Taiga/Tundra at high lat)
+        }
+        // Cold zone
         else if (absLat > 58) {
-          // Cold zone
-          terrain = moist > 0.5 ? 2 : 1; // Taiga or Tundra
-        } else if (absLat > 25) {
-          // Temperate zone
-          if (elev > 0.82) terrain = 8; // Mountains
-          else if (elev > 0.72) terrain = 7; // Hills
-          else if (moist > 0.7) terrain = 9; // Wetland
-          else if (moist > 0.55) terrain = 6; // Forest
-          else if (moist > 0.4) terrain = 4; // Grassland
+          terrain = m > 0.5 ? 2 : 1; // Taiga or Tundra
+        }
+        // Temperate zone
+        else if (absLat > 25) {
+          if (e > 0.7) terrain = 7; // Hills
+          else if (m > 0.7) terrain = 9; // Wetland
+          else if (m > 0.55) terrain = 6; // Forest
+          else if (m > 0.38) terrain = 4; // Grassland
           else terrain = 5; // Plains
-        } else if (temp > 0.7 && moist < 0.35) {
-          // Arid zone
-          if (elev > 0.75) terrain = 12; // Mesa
-          else if (moist > 0.25 && Math.random() < 0.05) terrain = 13; // Oasis (rare)
-          else if (moist > 0.2) terrain = 11; // Savanna
-          else terrain = 10; // Desert
-        } else {
-          // Tropical zone
-          if (elev > 0.8) terrain = 15; // Volcanic (rare)
-          else if (moist > 0.5) terrain = 14; // Jungle
-          else if (moist > 0.35) terrain = 11; // Savanna
+        }
+        // Arid zone
+        else if (temp > 0.7 && m < 0.35) {
+          if (e > 0.7) terrain = 12; // Mesa
+          else if (m > 0.25 && Math.random() < 0.04) terrain = 13; // Oasis
+          else if (m > 0.2) terrain = 11; // Savanna
           else terrain = 10; // Desert
         }
-
-        // River deltas near coast transitions
-        if (!TERRAINS[terrain].water && Math.random() < 0.02 && moist > 0.5) {
-          // Check if adjacent to water
-          const neighbors = this.getNeighbors(r, c);
-          const hasWater = neighbors.some(n => n && TERRAINS[this.mapData[n.r][n.c].terrain].water);
-          if (hasWater && temp > 0.4) terrain = 19; // River Delta
+        // Tropical zone
+        else {
+          if (e > 0.7) terrain = 15; // Volcanic
+          else if (m > 0.5) terrain = 14; // Jungle
+          else if (m > 0.35) terrain = 11; // Savanna
+          else terrain = 10; // Desert
         }
 
         this.mapData[r][c].terrain = terrain;
       }
     }
 
-    // Ensure coast tiles exist between land and ocean
+    // River deltas near coast transitions
+    for (let r = 0; r < mapHeight; r++) {
+      for (let c = 0; c < mapWidth; c++) {
+        const tile = this.mapData[r][c];
+        if (TERRAINS[tile.terrain].water) continue;
+        if (moist[r][c] < 0.5 || Math.random() > 0.02) continue;
+        const lat = Math.abs(-90 + (r + 0.5) * (180 / mapHeight));
+        if (lat > 70) continue;
+        const neighbors = this.getNeighbors(r, c);
+        const hasWater = neighbors.some(n => TERRAINS[this.mapData[n.r][n.c].terrain].water);
+        if (hasWater) tile.terrain = 19; // River Delta
+      }
+    }
+
+    // Ensure coast tiles between land and deep ocean
     for (let r = 0; r < mapHeight; r++) {
       for (let c = 0; c < this.rowWidths[r]; c++) {
         const tile = this.mapData[r][c];
-        if (tile.terrain === 17) { // Ocean
+        if (tile.terrain === 17) {
           const neighbors = this.getNeighbors(r, c);
           const hasLand = neighbors.some(n => n && !TERRAINS[this.mapData[n.r][n.c].terrain].water);
-          if (hasLand) tile.terrain = 16; // Convert to coast
+          if (hasLand) tile.terrain = 16;
         }
       }
     }
@@ -506,6 +673,26 @@ const Game = {
       if (w.empProd) prod += w.empProd;
       if (w.empCulture) cul += w.empCulture;
       if (w.empScience) sci += w.empScience;
+    }
+
+    // National building yields (applied to the city that built it)
+    for (const bId of city.buildings) {
+      const nb = NATIONAL_BUILDINGS.find(n => 'national_' + n.id === bId);
+      if (!nb) continue;
+      if (nb.sci) sci += nb.sci;
+      if (nb.cul) cul += nb.cul;
+    }
+
+    // Artifact bonuses (empire-wide, split across cities)
+    if (p.artifacts && p.artifacts.length > 0) {
+      const cityCount = Math.max(1, p.cities.length);
+      for (const aId of p.artifacts) {
+        const a = ARTIFACTS.find(ar => ar.id === aId);
+        if (!a || !a.bonus) continue;
+        if (a.bonus.sci) sci += Math.ceil(a.bonus.sci / cityCount);
+        if (a.bonus.cul) cul += Math.ceil(a.bonus.cul / cityCount);
+        if (a.bonus.gold) gold += Math.ceil(a.bonus.gold / cityCount);
+      }
     }
 
     // Science from population
@@ -781,6 +968,12 @@ const Game = {
     let aStr = aType.str * (attacker.hp / 100) * aPlayer.combatMod;
     let dStr = dType.str * (defender.hp / 100) * dPlayer.combatMod;
 
+    // Government combat bonuses
+    const aGov = GOVERNMENTS.find(g => g.id === (aPlayer.government || 'chiefdom'));
+    const dGov = GOVERNMENTS.find(g => g.id === (dPlayer.government || 'chiefdom'));
+    if (aGov && aGov.bonuses.combat && !(aPlayer.anarchyTurns > 0)) aStr *= (1 + aGov.bonuses.combat);
+    if (dGov && dGov.bonuses.combat && !(dPlayer.anarchyTurns > 0)) dStr *= (1 + dGov.bonuses.combat);
+
     // Promotion bonuses
     const aPromos = this.getPromotionBonuses(attacker);
     const dPromos = this.getPromotionBonuses(defender);
@@ -925,13 +1118,19 @@ const Game = {
     if (!p.alive) return;
 
     let totalGold = 0, totalSci = 0, totalCul = 0, totalHist = 0;
+    const govData = GOVERNMENTS.find(g => g.id === (p.government || 'chiefdom'));
+    const govActive = govData && !(p.anarchyTurns > 0);
 
     for (const city of p.cities) {
       const yields = this.getCityYields(city);
 
+      // Government food bonus
+      let foodYield = yields.food;
+      if (govActive && govData.bonuses.food) foodYield = Math.floor(foodYield * (1 + govData.bonuses.food));
+
       // Food & growth
       const foodConsumed = city.population * 2;
-      const foodSurplus = Math.floor((yields.food - foodConsumed) * (1 + yields.growthMod) * p.devMod);
+      const foodSurplus = Math.floor((foodYield - foodConsumed) * (1 + yields.growthMod) * p.devMod);
       city.food += foodSurplus;
 
       const growthThreshold = 10 + city.population * 5 + city.population * city.population * 0.5;
@@ -945,9 +1144,10 @@ const Game = {
         city.food = 0;
       }
 
-      // Production (build queue) — golden age gives +50%
+      // Production (build queue) — golden age gives +50%, government bonus
       if (city.buildQueue) {
         let prodAmount = Math.floor(yields.prod * p.devMod);
+        if (govActive && govData.bonuses.prod) prodAmount = Math.floor(prodAmount * (1 + govData.bonuses.prod));
         if (this.state.goldenAge && this.state.goldenAge[city.owner] && this.state.goldenAge[city.owner].turnsLeft > 0) {
           prodAmount = Math.floor(prodAmount * 1.5);
         }
@@ -968,6 +1168,18 @@ const Game = {
         if (ownerId !== playerId) continue;
         const w = WONDERS.find(w => w.id === wId);
         if (w && w.empHappy) city.happiness += Math.floor(w.empHappy / p.cities.length);
+      }
+      // National building happiness
+      for (const bId of city.buildings) {
+        const nb = NATIONAL_BUILDINGS.find(n => 'national_' + n.id === bId);
+        if (nb && nb.hap) city.happiness += nb.hap;
+      }
+      // Artifact happiness (empire-wide)
+      if (p.artifacts && p.artifacts.length > 0) {
+        for (const aId of p.artifacts) {
+          const a = ARTIFACTS.find(ar => ar.id === aId);
+          if (a && a.bonus && a.bonus.hap) city.happiness += Math.ceil(a.bonus.hap / p.cities.length);
+        }
       }
       city.happiness -= Math.max(0, city.population - 5); // unhappiness from large pop
 
@@ -997,6 +1209,23 @@ const Game = {
     // Golden age gold bonus
     const isGoldenAge = this.state.goldenAge && this.state.goldenAge[playerId] && this.state.goldenAge[playerId].turnsLeft > 0;
     if (isGoldenAge) totalGold = Math.floor(totalGold * 1.5);
+
+    // Government yield bonuses (gold, science, culture applied to totals)
+    if (govActive) {
+      const b = govData.bonuses;
+      if (b.gold) totalGold = Math.floor(totalGold * (1 + b.gold));
+      if (b.sci) totalSci = Math.floor(totalSci * (1 + b.sci));
+      if (b.cul) totalCul = Math.floor(totalCul * (1 + b.cul));
+      if (b.hap) for (const city of p.cities) city.happiness += b.hap;
+      const pen = govData.penalty;
+      if (pen && pen.hap) for (const city of p.cities) city.happiness += pen.hap;
+    }
+    // Anarchy: halve all yields
+    if (p.anarchyTurns > 0) {
+      totalGold = Math.floor(totalGold * 0.5);
+      totalSci = Math.floor(totalSci * 0.5);
+      totalCul = Math.floor(totalCul * 0.5);
+    }
 
     p.gold += totalGold;
     p.totalScience += totalSci;
@@ -1032,6 +1261,31 @@ const Game = {
       }
     } else if (p.isAI) {
       AI.chooseResearch(p);
+    }
+
+    // Civic research (driven by culture)
+    if (p.anarchyTurns > 0) {
+      p.anarchyTurns--;
+      if (playerId === 0 && p.anarchyTurns === 0) UI.notify('Anarchy has ended! Your new government is established.');
+    }
+    if (p.currentCivic) {
+      p.civicProgress += totalCul;
+      const civic = CIVICS.find(c => c.id === p.currentCivic);
+      if (civic && p.civicProgress >= civic.cost) {
+        p.civics.add(civic.id);
+        p.civicProgress = 0;
+        p.currentCivic = null;
+        if (playerId === 0) UI.notify('Civic complete: ' + civic.name);
+        // Check if new governments are unlocked
+        const newGovs = GOVERNMENTS.filter(g => g.unlockedBy === civic.id);
+        if (newGovs.length > 0 && playerId === 0) {
+          UI.notify('New government' + (newGovs.length > 1 ? 's' : '') + ' available: ' + newGovs.map(g => g.name).join(', '));
+        }
+        if (p.isAI) AI.chooseCivic(p);
+        if (p.isAI) AI.chooseGovernment(p);
+      }
+    } else if (p.isAI) {
+      AI.chooseCivic(p);
     }
 
     // Heal units in friendly territory + supply line check
@@ -1120,14 +1374,19 @@ const Game = {
     // Legacy building conversion
     this.processLegacyBuildings(p);
 
+    // Artifact collection
+    if (p.nationalBuildings && p.nationalBuildings.length > 0) {
+      const newArts = this.processArtifacts(p);
+      if (playerId === 0) {
+        for (const a of newArts) UI.notify('📜 Artifact acquired: ' + a.name + '!');
+      }
+    }
+
     // Trade routes
     this.processTradeRoutes(playerId);
 
     // Sports & entertainment
     this.processSports(playerId);
-
-    // Religion & faith
-    this.processFaith(playerId);
 
     // Check bankruptcy
     if (p.gold < -50) {
@@ -1156,6 +1415,21 @@ const Game = {
         city.buildings.push(q.id);
       }
       if (city.owner === 0) UI.notify(city.name + ' built ' + q.name);
+    } else if (q.type === 'national') {
+      const p = this.state.players[city.owner];
+      if (!p.nationalBuildings) p.nationalBuildings = [];
+      if (!p.nationalBuildings.includes(q.id)) {
+        p.nationalBuildings.push(q.id);
+        if (!city.buildings.includes('national_' + q.id)) {
+          city.buildings.push('national_' + q.id);
+        }
+        if (city.owner === 0) UI.notify(city.name + ' completed ' + q.name + '!');
+        // Immediately check for artifacts
+        const newArts = this.processArtifacts(p);
+        if (city.owner === 0) {
+          for (const a of newArts) UI.notify('Artifact acquired: ' + a.name + '!');
+        }
+      }
     } else if (q.type === 'wonder') {
       if (!this.state.builtWonders[q.id]) {
         this.state.builtWonders[q.id] = city.owner;
@@ -1273,6 +1547,10 @@ const Game = {
       const b = BUILDINGS.find(b => b.id === id);
       if (!b) return;
       name = b.name; cost = b.cost;
+    } else if (type === 'national') {
+      const nb = NATIONAL_BUILDINGS.find(n => n.id === id);
+      if (!nb) return;
+      name = nb.name; cost = nb.cost;
     } else if (type === 'wonder') {
       const w = WONDERS.find(w => w.id === id);
       if (!w) return;
@@ -1401,10 +1679,6 @@ const Game = {
       case 'merchant':
         p.gold += 500;
         if (playerId === 0) UI.notify('A Great Merchant appears! +500 Gold.');
-        break;
-      case 'prophet':
-        p.faith = (p.faith || 0) + 100;
-        if (playerId === 0) UI.notify('A Great Prophet appears! +100 Faith.');
         break;
     }
   },
@@ -1672,22 +1946,6 @@ const Game = {
     return {id: best, name: spec.name, tier, bonuses};
   },
 
-  // ========== MINOR FACTIONS ==========
-
-  // Minor factions are tracked as special non-player cities
-  // They provide bonuses to the player with highest influence
-
-  getMinorFactionBonus(factionType) {
-    switch (factionType) {
-      case 'militaristic': return {desc: '+2 XP for new units', xpBonus: 2};
-      case 'maritime': return {desc: '+1 food in all cities', foodBonus: 1};
-      case 'cultural': return {desc: '+2 culture in capital', culBonus: 2};
-      case 'scientific': return {desc: '+2 science in capital', sciBonus: 2};
-      case 'mercantile': return {desc: '+3 gold in capital', goldBonus: 3};
-      default: return {};
-    }
-  },
-
   // ========== TRADE ROUTES ==========
 
   TRADE_ROUTE_TYPES: [
@@ -1800,68 +2058,6 @@ const Game = {
           if (playerId === 0) UI.notify('🏅 Olympics hosted in ' + hostCity.name + '! +10 Culture, +20 Gold');
         }
       }
-    }
-  },
-
-  // ========== RELIGION & FAITH ==========
-
-  PANTHEONS: [
-    {id: 'sun_god', name: 'God of the Sun', desc: '+1 food from farms', effect: {farmFood: 1}},
-    {id: 'earth_mother', name: 'Earth Mother', desc: '+1 faith from mines', effect: {mineFaith: 1}},
-    {id: 'god_of_war', name: 'God of War', desc: '+10% combat str', effect: {combatMod: 0.1}},
-    {id: 'sea_god', name: 'God of the Sea', desc: '+1 food from coast', effect: {coastFood: 1}},
-    {id: 'god_of_craft', name: 'God of Craftsmen', desc: '+1 prod in cities', effect: {cityProd: 1}},
-    {id: 'goddess_of_love', name: 'Goddess of Love', desc: '+1 happiness in all cities', effect: {empHappy: 1}},
-  ],
-
-  BELIEFS: [
-    {id: 'tithe', name: 'Tithe', desc: '+1 gold per 4 followers'},
-    {id: 'religious_community', name: 'Religious Community', desc: '+1% prod per follower'},
-    {id: 'choral_music', name: 'Choral Music', desc: 'Shrines & Temples give +culture'},
-    {id: 'scripture', name: 'Scripture', desc: '+1 science from shrines'},
-    {id: 'pilgrimage', name: 'Pilgrimage', desc: '+2 faith per foreign city with religion'},
-  ],
-
-  processFaith(playerId) {
-    const p = this.state.players[playerId];
-    if (!p.faith) p.faith = 0;
-
-    // Faith from buildings
-    let faithGain = 0;
-    for (const city of p.cities) {
-      for (const bId of city.buildings) {
-        if (bId === 'shrine') faithGain += 1;
-        if (bId === 'temple' || bId === 'cathedral' || bId === 'monastery') faithGain += 2;
-        if (bId === 'pagoda') faithGain += 3;
-      }
-    }
-    p.faith += faithGain;
-
-    // Pantheon threshold
-    if (!p.pantheon && p.faith >= 25) {
-      // Auto-select first available pantheon
-      const taken = this.state.players.filter(pl => pl.pantheon).map(pl => pl.pantheon);
-      const available = this.PANTHEONS.filter(pa => !taken.includes(pa.id));
-      if (available.length > 0) {
-        p.pantheon = available[0].id;
-        if (playerId === 0) UI.notify('Pantheon founded: ' + available[0].name + '!');
-      }
-    }
-
-    // Religion threshold
-    if (!p.religion && p.pantheon && p.faith >= 100) {
-      const religionNames = ['Buddhism','Christianity','Hinduism','Islam','Judaism','Taoism','Zoroastrianism','Confucianism'];
-      const taken = this.state.players.filter(pl => pl.religion).map(pl => pl.religion);
-      const available = religionNames.filter(r => !taken.includes(r));
-      if (available.length > 0) {
-        p.religion = available[0];
-        if (playerId === 0) UI.notify('Religion founded: ' + p.religion + '!');
-      }
-    }
-
-    // Pantheon combat bonus
-    if (p.pantheon === 'god_of_war') {
-      p.combatMod = (p.isAI ? this.state.difficulty.aiCombat : 1.0) * 1.1;
     }
   },
 
@@ -2010,6 +2206,7 @@ const Game = {
     score += player.techs.size * 5;
     score += Object.values(this.state.builtWonders).filter(v => v === player.id).length * 20;
     score += player.units.length * 2;
+    if (player.civics) score += player.civics.size * 4;
     return Math.floor(score * this.state.difficulty.scoreMul);
   },
 
@@ -2057,6 +2254,93 @@ const Game = {
     });
   },
 
+  getAvailableCivics(player) {
+    return CIVICS.filter(c => {
+      if (player.civics.has(c.id)) return false;
+      return c.prereqs.every(pr => player.civics.has(pr));
+    });
+  },
+
+  getAvailableGovernments(player) {
+    return GOVERNMENTS.filter(g => {
+      if (g.id === player.government) return false;
+      return player.civics.has(g.unlockedBy);
+    });
+  },
+
+  getAvailableNationalBuildings(city) {
+    const p = this.state.players[city.owner];
+    if (!p.nationalBuildings) p.nationalBuildings = [];
+    return NATIONAL_BUILDINGS.filter(nb => {
+      if (p.nationalBuildings.includes(nb.id)) return false;
+      if (!p.techs.has(nb.req)) return false;
+      return true;
+    });
+  },
+
+  getArtifactStat(player, stat) {
+    if (stat === 'techCount') return player.techs.size;
+    return player[stat] || 0;
+  },
+
+  processArtifacts(player) {
+    if (!player.nationalBuildings) player.nationalBuildings = [];
+    if (!player.artifacts) player.artifacts = [];
+
+    // Determine which artifact types the player can store
+    const storageTypes = new Set();
+    for (const nbId of player.nationalBuildings) {
+      const nb = NATIONAL_BUILDINGS.find(n => n.id === nbId);
+      if (nb) storageTypes.add(nb.artifactType);
+    }
+    // Wembley and Lord's count as national_stadium for sports trophies
+    if (player.wonders.includes('wembley') || player.wonders.includes('lords_cg')) {
+      storageTypes.add('sports_trophies');
+    }
+
+    let newArtifacts = [];
+    for (const a of ARTIFACTS) {
+      if (player.artifacts.includes(a.id)) continue;
+      if (!storageTypes.has(a.type)) continue;
+      const val = this.getArtifactStat(player, a.threshold.stat);
+      if (val >= a.threshold.value) {
+        player.artifacts.push(a.id);
+        newArtifacts.push(a);
+      }
+    }
+    return newArtifacts;
+  },
+
+  adoptGovernment(player, govId) {
+    const gov = GOVERNMENTS.find(g => g.id === govId);
+    if (!gov || !player.civics.has(gov.unlockedBy)) return false;
+    if (player.government === govId) return false;
+    const prevEraIdx = ERAS.indexOf((GOVERNMENTS.find(g => g.id === player.government) || {era:'caveman'}).era);
+    const newEraIdx = ERAS.indexOf(gov.era);
+    // Anarchy: 1 turn per era difference (min 1, skip if first adoption from chiefdom)
+    if (player.government !== 'chiefdom') {
+      player.anarchyTurns = Math.max(1, Math.abs(newEraIdx - prevEraIdx));
+    }
+    player.government = govId;
+    return true;
+  },
+
+  // Political affiliation diplomacy modifier between two players
+  getPoliticalRelationMod(p1, p2) {
+    const l1 = LEADERS.find(l => l.name === p1.name);
+    const l2 = LEADERS.find(l => l.name === p2.name);
+    if (!l1 || !l2 || !l1.politics || !l2.politics) return 0;
+    const aff1 = POLITICAL_AFFILIATIONS[l1.politics.affiliation];
+    const aff2 = POLITICAL_AFFILIATIONS[l2.politics.affiliation];
+    if (!aff1 || !aff2) return 0;
+    let mod = 0;
+    if (aff1.allies && aff1.allies.includes(l2.politics.affiliation)) mod += 10;
+    if (aff1.rivals && aff1.rivals.includes(l2.politics.affiliation)) mod -= 15;
+    // Same government type = extra affinity
+    if (p1.government && p2.government && p1.government === p2.government) mod += 8;
+    return mod;
+  },
+
   // ========== SERIALIZATION ==========
 
   serialize() {
@@ -2097,11 +2381,20 @@ const Game = {
       else if (!(p.techs instanceof Set)) p.techs = new Set();
       // Backward-compat for new systems
       if (!p.cultureAccum) p.cultureAccum = {};
-      if (!p.greatPeoplePoints) p.greatPeoplePoints = {scientist:0,engineer:0,artist:0,general:0,merchant:0,prophet:0};
+      if (!p.greatPeoplePoints) p.greatPeoplePoints = {scientist:0,engineer:0,artist:0,general:0,merchant:0};
       if (!p.greatPeopleThreshold) p.greatPeopleThreshold = 100;
-      if (!p.faith) p.faith = 0;
       if (!p.relations) p.relations = {};
       if (p.treaties && p.treaties.__set) p.treaties = new Set(p.treaties.__set);
+      // Civics & Government backward-compat
+      if (p.civics && p.civics.__set) p.civics = new Set(p.civics.__set);
+      else if (Array.isArray(p.civics)) p.civics = new Set(p.civics);
+      else if (!(p.civics instanceof Set)) p.civics = new Set(['tradition','mysticism']);
+      if (!p.currentCivic) p.currentCivic = null;
+      if (!p.civicProgress) p.civicProgress = 0;
+      if (!p.government) p.government = 'chiefdom';
+      if (!p.anarchyTurns) p.anarchyTurns = 0;
+      if (!p.nationalBuildings) p.nationalBuildings = [];
+      if (!p.artifacts) p.artifacts = [];
     }
     if (!this.state.eraHistory) this.state.eraHistory = [{turn: 0, era: 'caveman'}];
     if (!this.state.goldenAge) this.state.goldenAge = {};
