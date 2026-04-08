@@ -1646,18 +1646,19 @@ const UI = {
     overlay.classList.remove('hidden');
   },
 
-  // Show narration with pre-fetched audio (base64 mp3)
+  // Show narration with pre-fetched audio (base64 mp3) — plays OVER music
   showNarrationWithAudio(text, attribution, icon, audioBase64) {
     this.showNarrationOverlay(text, attribution, icon);
     if (audioBase64) {
       try {
-        if (this.musicPlayer) this.musicPlayer.volume = 0.1;
+        // Duck music volume but keep it playing
+        if (this.musicPlayer) this.musicPlayer.volume = this.musicVolume * 0.3;
         const audioUrl = 'data:audio/mpeg;base64,' + audioBase64;
         this._narrationAudio = new Audio(audioUrl);
         this._narrationAudio.volume = 1.0;
         this._narrationAudio.play().catch(() => {});
         this._narrationAudio.onended = () => {
-          if (this.musicPlayer) this.musicPlayer.volume = 0.5;
+          if (this.musicPlayer) this.musicPlayer.volume = this.musicVolume;
           this._narrationAudio = null;
         };
       } catch (e) {}
@@ -1670,8 +1671,9 @@ const UI = {
     if (this._narrationAudio) {
       this._narrationAudio.pause();
       this._narrationAudio = null;
-      if (this.musicPlayer) this.musicPlayer.volume = 0.5;
     }
+    // Restore music volume
+    if (this.musicPlayer) this.musicPlayer.volume = this.musicVolume;
     // Process next queued narration
     if (this._narrationQueue.length > 0) {
       const next = this._narrationQueue.shift();
@@ -1834,13 +1836,13 @@ const UI = {
       const blob = await resp.blob();
       const url = URL.createObjectURL(blob);
       if (this._dialogueAudio) { this._dialogueAudio.pause(); }
-      if (this.musicPlayer) this.musicPlayer.volume = 0.1;
+      if (this.musicPlayer) this.musicPlayer.volume = this.musicVolume * 0.3;
       this._dialogueAudio = new Audio(url);
       this._dialogueAudio.volume = 1.0;
       this._dialogueAudio.play().catch(() => {});
       this._dialogueAudio.onended = () => {
         URL.revokeObjectURL(url);
-        if (this.musicPlayer) this.musicPlayer.volume = 0.5;
+        if (this.musicPlayer) this.musicPlayer.volume = this.musicVolume;
         this._dialogueAudio = null;
       };
     } catch (e) {}
@@ -1977,11 +1979,11 @@ const UI = {
         const audioUrl = 'data:audio/mpeg;base64,' + data.audio;
         this._dialogueAudio = new Audio(audioUrl);
         // Lower the leader music while speaking
-        if (this.musicPlayer) this.musicPlayer.volume = 0.1;
+        if (this.musicPlayer) this.musicPlayer.volume = this.musicVolume * 0.3;
         this._dialogueAudio.volume = 1.0;
         this._dialogueAudio.play().catch(() => {});
         this._dialogueAudio.onended = () => {
-          if (this.musicPlayer) this.musicPlayer.volume = 0.5;
+          if (this.musicPlayer) this.musicPlayer.volume = this.musicVolume;
           this._dialogueAudio = null;
         };
       }
@@ -2076,17 +2078,13 @@ const UI = {
     btn.textContent = 'Begin Your Journey';
     overlay.classList.remove('hidden');
     this._narrativeCallback = () => {
-      this.playEraMusic(Game.state.players[0].era);
+      // Music is already playing — no need to restart it
+      // Show intro narration scroll if pre-fetched result is ready
+      const result = this._prefetchedIntroNarration;
+      if (result && result.text) {
+        this.showNarrationWithAudio(result.text, "— Apollo's Time", '🔥', result.audio);
+      }
     };
-    // Narrate the intro
-    if (NARRATION_PROMPTS && NARRATION_PROMPTS.intro) {
-      this.queueNarration(async () => {
-        const result = await this._requestNarrateVoice(NARRATION_PROMPTS.intro);
-        if (result && result.text) {
-          this.showNarrationWithAudio(result.text, "— Apollo's Time", '🔥', result.audio);
-        }
-      });
-    }
   },
 
   showEraIntro(era) {
@@ -2285,6 +2283,11 @@ const UI = {
     video.playsInline = true;
     video.muted = false;
     overlay.classList.remove('hidden');
+    // Timeout: skip if video doesn't start playing within 5 seconds
+    this._videoLoadTimer = setTimeout(() => { this.skipVideo(); }, 5000);
+    video.oncanplay = () => {
+      if (this._videoLoadTimer) { clearTimeout(this._videoLoadTimer); this._videoLoadTimer = null; }
+    };
     video.play().catch(() => {
       // Autoplay blocked — try muted (browsers allow muted autoplay)
       video.muted = true;
@@ -2295,10 +2298,11 @@ const UI = {
   },
 
   skipVideo() {
+    if (this._videoLoadTimer) { clearTimeout(this._videoLoadTimer); this._videoLoadTimer = null; }
     const overlay = document.getElementById('video-overlay');
     const video = document.getElementById('game-video');
     if (overlay) overlay.classList.add('hidden');
-    if (video) { video.pause(); video.src = ''; }
+    if (video) { video.pause(); video.src = ''; video.oncanplay = null; }
     if (this._videoCallback) {
       const cb = this._videoCallback;
       this._videoCallback = null;

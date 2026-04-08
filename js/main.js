@@ -15,35 +15,67 @@ function startNewGame() {
 
   UI.showScreen('game-screen');
 
-  if (!Renderer.initialized) {
-    Renderer.init();
+  // Show loading overlay
+  const loadingEl = document.getElementById('loading-overlay');
+  const statusEl = document.getElementById('loading-status');
+  if (loadingEl) loadingEl.classList.remove('hidden');
+
+  // Start music right away during loading
+  UI.playEraMusic('caveman');
+
+  // Pre-fetch intro narration in parallel with everything else
+  UI._prefetchedIntroNarration = null;
+  if (typeof NARRATION_PROMPTS !== 'undefined' && NARRATION_PROMPTS.intro) {
+    UI._requestNarrateVoice(NARRATION_PROMPTS.intro).then(result => {
+      UI._prefetchedIntroNarration = result;
+    }).catch(() => {});
   }
 
-  Game.init(config);
+  // Use setTimeout to let the loading screen render before heavy work
+  setTimeout(() => {
+    if (statusEl) statusEl.textContent = 'Generating terrain...';
 
-  // Center on player's first city
-  const p = Game.state.players[0];
-  if (p.cities.length > 0) {
-    Renderer.centerOn(p.cities[0].r, p.cities[0].c);
-  }
-
-  // Auto-select starting research
-  if (!p.currentResearch) {
-    const available = Game.getAvailableTechs(p);
-    if (available.length > 0) {
-      UI.showTechTree();
+    if (!Renderer.initialized) {
+      Renderer.init();
     }
-  }
 
-  Renderer.render();
-  Renderer.updateMinimap();
-  UI.updateTopBar();
-  UI.updateRightPanel();
-  // Play intro video first, then show prologue text overlay
-  UI.playIntroVideo(function() {
-    UI.showPrologue();
-  });
-  UI.notify('Welcome to Apollo\'s Time! Found your civilization and conquer the world.');
+    Game.init(config);
+
+    if (statusEl) statusEl.textContent = 'Placing civilizations...';
+
+    // Center on player's first city
+    const p = Game.state.players[0];
+    if (p.cities.length > 0) {
+      Renderer.centerOn(p.cities[0].r, p.cities[0].c);
+    }
+
+    // Auto-select starting research
+    if (!p.currentResearch) {
+      const available = Game.getAvailableTechs(p);
+      if (available.length > 0) {
+        UI.showTechTree();
+      }
+    }
+
+    if (statusEl) statusEl.textContent = 'Rendering world...';
+
+    Renderer.render();
+    Renderer.updateMinimap();
+    UI.updateTopBar();
+    UI.updateRightPanel();
+
+    // Fade out loading overlay
+    if (loadingEl) {
+      loadingEl.classList.add('hidden');
+      setTimeout(() => { loadingEl.style.display = 'none'; }, 500);
+    }
+
+    // Play intro video with 5s load timeout, then show prologue
+    UI.playIntroVideo(function() {
+      UI.showPrologue();
+    });
+    UI.notify('Welcome to Apollo\'s Time! Found your civilization and conquer the world.');
+  }, 50);
 }
 
 function selectTech(techId) {

@@ -30,6 +30,42 @@ html, body { height: 100%; overflow: hidden; font-family: 'Segoe UI', system-ui,
 .screen { display: none; width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 1; }
 #save-load-screen.overlay-mode { z-index: 200; background: rgba(0,0,0,0.7); }
 .screen.active { display: flex; justify-content: center; align-items: center; }
+
+/* Loading Overlay */
+#loading-overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: linear-gradient(135deg, #0a0a1a 0%, #1a0f08 50%, #0a0a1a 100%);
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.5s ease;
+}
+#loading-overlay.hidden { opacity: 0; pointer-events: none; }
+#loading-content { text-align: center; }
+#loading-title {
+  font-size: 36px;
+  color: #c9a84c;
+  font-family: Georgia, 'Times New Roman', serif;
+  letter-spacing: 3px;
+  margin-bottom: 30px;
+  text-shadow: 0 0 20px rgba(201,168,76,0.4);
+}
+#loading-spinner {
+  width: 50px; height: 50px;
+  border: 3px solid #2a1810;
+  border-top: 3px solid #c9a84c;
+  border-radius: 50%;
+  margin: 0 auto 20px;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+#loading-status {
+  font-size: 14px;
+  color: #8a7a6a;
+  letter-spacing: 1px;
+}
 #game-screen.active { justify-content: flex-start; align-items: stretch; }
 
 /* Main Menu */
