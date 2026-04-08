@@ -219,7 +219,12 @@
         <div id="dialogue-content">
           <div id="dialogue-name"></div>
           <div id="dialogue-text"></div>
+          <div id="dialogue-player-speech" style="display:none"></div>
           <div id="dialogue-actions"></div>
+          <div id="dialogue-voice">
+            <button id="dialogue-mic" onclick="UI.startVoiceChat()" title="Hold to speak">🎤 Speak</button>
+            <span id="dialogue-speech-status"></span>
+          </div>
         </div>
         <button id="dialogue-close" onclick="UI.closeDialogue()">&times;</button>
       </div>

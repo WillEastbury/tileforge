@@ -1546,6 +1546,19 @@ const UI = {
 
   closeDialogue() {
     document.getElementById('dialogue-overlay').classList.add('hidden');
+    // Stop any active speech recognition
+    if (this._recognition) {
+      this._recognition.stop();
+      this._recognition = null;
+    }
+    // Stop dialogue audio
+    if (this._dialogueAudio) {
+      this._dialogueAudio.pause();
+      this._dialogueAudio = null;
+    }
+    // Reset player speech
+    const pSpeech = document.getElementById('dialogue-player-speech');
+    if (pSpeech) pSpeech.style.display = 'none';
     // Restore era music after diplomacy
     if (this._savedEraMusic) {
       this.fadeOutMusic(() => {
@@ -1747,8 +1760,15 @@ const UI = {
   async diplomacyGreet(playerId) {
     const player = Game.state.players[playerId];
     this.showDialogue(player.name, null, []);
+    // Reset player speech display
+    const pSpeech = document.getElementById('dialogue-player-speech');
+    if (pSpeech) pSpeech.style.display = 'none';
     const text = await this.requestDiplomacyDialogue(playerId, 'greet');
     this._updateDialogueText(text);
+    // TTS the greeting
+    this._ttsDialogue(text);
+    // Show default voice actions
+    this._showIntentActions(playerId, 'greet');
   },
 
   async diplomacyDeclareWar(playerId) {
@@ -1756,6 +1776,7 @@ const UI = {
     this.showDialogue(player.name, null, []);
     const text = await this.requestDiplomacyDialogue(playerId, 'war_declaration');
     this._updateDialogueText(text);
+    this._ttsDialogue(text);
     const actionsEl = document.getElementById('dialogue-actions');
     actionsEl.innerHTML = '';
     const confirmBtn = document.createElement('button');
@@ -1778,6 +1799,7 @@ const UI = {
     this.showDialogue(player.name, null, []);
     const text = await this.requestDiplomacyDialogue(playerId, 'peace_offer');
     this._updateDialogueText(text);
+    this._ttsDialogue(text);
     const actionsEl = document.getElementById('dialogue-actions');
     actionsEl.innerHTML = '';
     const acceptBtn = document.createElement('button');
@@ -1793,6 +1815,248 @@ const UI = {
     refuseBtn.addEventListener('click', () => this.closeDialogue());
     actionsEl.appendChild(acceptBtn);
     actionsEl.appendChild(refuseBtn);
+  },
+
+  // ========== VOICE DIPLOMACY ==========
+
+  _voicePlayerId: null,
+  _recognition: null,
+  _dialogueAudio: null,
+
+  async _ttsDialogue(text) {
+    try {
+      const resp = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      });
+      if (!resp.ok) return;
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      if (this._dialogueAudio) { this._dialogueAudio.pause(); }
+      if (this.musicPlayer) this.musicPlayer.volume = 0.1;
+      this._dialogueAudio = new Audio(url);
+      this._dialogueAudio.volume = 1.0;
+      this._dialogueAudio.play().catch(() => {});
+      this._dialogueAudio.onended = () => {
+        URL.revokeObjectURL(url);
+        if (this.musicPlayer) this.musicPlayer.volume = 0.5;
+        this._dialogueAudio = null;
+      };
+    } catch (e) {}
+  },
+
+  startVoiceChat() {
+    const micBtn = document.getElementById('dialogue-mic');
+    const status = document.getElementById('dialogue-speech-status');
+    if (!micBtn) return;
+
+    // Check for Web Speech API
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      status.textContent = 'Speech recognition not supported in this browser';
+      return;
+    }
+
+    // If already listening, stop
+    if (this._recognition) {
+      this._recognition.stop();
+      this._recognition = null;
+      micBtn.classList.remove('listening');
+      status.textContent = '';
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-US';
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+    recognition.continuous = false;
+    this._recognition = recognition;
+
+    micBtn.classList.add('listening');
+    micBtn.textContent = '🔴 Listening...';
+    status.textContent = 'Speak now...';
+
+    recognition.onresult = (event) => {
+      let transcript = '';
+      for (let i = 0; i < event.results.length; i++) {
+        transcript += event.results[i][0].transcript;
+      }
+      status.textContent = transcript;
+      // If final result, process it
+      if (event.results[event.results.length - 1].isFinal) {
+        recognition.stop();
+      }
+    };
+
+    recognition.onend = () => {
+      this._recognition = null;
+      micBtn.classList.remove('listening');
+      micBtn.textContent = '🎤 Speak';
+      const transcript = status.textContent;
+      if (transcript && transcript !== 'Speak now...' && transcript !== '') {
+        this._processVoiceChat(transcript);
+      }
+    };
+
+    recognition.onerror = (event) => {
+      this._recognition = null;
+      micBtn.classList.remove('listening');
+      micBtn.textContent = '🎤 Speak';
+      if (event.error === 'not-allowed') {
+        status.textContent = 'Microphone access denied';
+      } else if (event.error === 'no-speech') {
+        status.textContent = 'No speech detected — try again';
+      } else {
+        status.textContent = 'Error: ' + event.error;
+      }
+    };
+
+    recognition.start();
+  },
+
+  async _processVoiceChat(speech) {
+    const micBtn = document.getElementById('dialogue-mic');
+    const status = document.getElementById('dialogue-speech-status');
+    const textEl = document.getElementById('dialogue-text');
+    const actionsEl = document.getElementById('dialogue-actions');
+
+    micBtn.classList.add('processing');
+    micBtn.disabled = true;
+    status.textContent = 'Processing...';
+
+    // Show player's speech
+    const playerSpeechEl = document.getElementById('dialogue-player-speech');
+    if (playerSpeechEl) {
+      playerSpeechEl.textContent = 'You said: "' + speech + '"';
+      playerSpeechEl.style.display = 'block';
+    }
+
+    // Determine which leader we're talking to
+    const nameEl = document.getElementById('dialogue-name');
+    const leaderName = nameEl ? nameEl.textContent : '';
+    const playerId = Game.state ? Game.state.players.findIndex(p => p.name === leaderName) : -1;
+
+    if (playerId <= 0) {
+      textEl.textContent = '(Could not identify leader)';
+      micBtn.classList.remove('processing');
+      micBtn.disabled = false;
+      return;
+    }
+
+    const player = Game.state.players[playerId];
+    const human = Game.state.players[0];
+    Game.initRelations(0, playerId);
+    const relation = human.relations[playerId] ? human.relations[playerId].score : 0;
+    const context = 'Turn ' + Game.state.turn + ', Year ' + Game.getYearString() + ', ' + player.cities.length + ' cities';
+
+    // Show thinking indicator
+    textEl.innerHTML = '<span class="dlg-loading">Thinking</span>';
+
+    try {
+      const resp = await fetch('/api/chat-voice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          speech,
+          leader: leaderName,
+          context,
+          relation,
+          player_name: human.name
+        })
+      });
+      const data = await resp.json();
+
+      // Update dialogue text with leader's response
+      textEl.textContent = data.response || 'Hmm...';
+
+      // Play TTS audio of leader's response
+      if (data.audio) {
+        if (this._dialogueAudio) { this._dialogueAudio.pause(); }
+        const audioUrl = 'data:audio/mpeg;base64,' + data.audio;
+        this._dialogueAudio = new Audio(audioUrl);
+        // Lower the leader music while speaking
+        if (this.musicPlayer) this.musicPlayer.volume = 0.1;
+        this._dialogueAudio.volume = 1.0;
+        this._dialogueAudio.play().catch(() => {});
+        this._dialogueAudio.onended = () => {
+          if (this.musicPlayer) this.musicPlayer.volume = 0.5;
+          this._dialogueAudio = null;
+        };
+      }
+
+      // Show action buttons based on intent
+      actionsEl.innerHTML = '';
+      const intent = data.intent || 'other';
+      this._showIntentActions(playerId, intent);
+
+      status.textContent = '(' + intent + ')';
+    } catch (e) {
+      textEl.textContent = '...';
+      status.textContent = 'Connection failed';
+    }
+
+    micBtn.classList.remove('processing');
+    micBtn.disabled = false;
+  },
+
+  _showIntentActions(playerId, intent) {
+    const actionsEl = document.getElementById('dialogue-actions');
+    actionsEl.innerHTML = '';
+    const self = this;
+
+    function addBtn(label, action, danger) {
+      const btn = document.createElement('button');
+      btn.textContent = label;
+      if (danger) btn.classList.add('dlg-btn-danger');
+      btn.addEventListener('click', action);
+      actionsEl.appendChild(btn);
+    }
+
+    const atWar = Game.state.players[0].wars && Game.state.players[0].wars.includes(playerId);
+    const warTurns = Game.state.players[0].relations[playerId] ? Game.state.players[0].relations[playerId].warTurns || 0 : 0;
+
+    switch (intent) {
+      case 'trade_offer':
+        addBtn('Propose Trade', () => { self.closeDialogue(); UI.notify('Trade proposed (not yet implemented)'); });
+        addBtn('Nevermind', () => self.closeDialogue());
+        break;
+      case 'alliance_offer':
+        addBtn('Form Alliance', () => { self.closeDialogue(); UI.notify('Alliance formed!'); });
+        addBtn('Decline', () => self.closeDialogue());
+        break;
+      case 'peace_offer':
+        if (atWar && warTurns >= 10) {
+          addBtn('Accept Peace', () => { self.closeDialogue(); Game.makePeace(0, playerId); self.renderDiplomacy(); });
+        }
+        addBtn('Close', () => self.closeDialogue());
+        break;
+      case 'threaten':
+      case 'demand':
+        if (!atWar) {
+          addBtn('Declare War', () => { self.closeDialogue(); Game.declareWar(0, playerId); self.renderDiplomacy(); }, true);
+        }
+        addBtn('Back Down', () => self.closeDialogue());
+        break;
+      case 'insult':
+        if (!atWar) {
+          addBtn('Declare War', () => { self.closeDialogue(); Game.declareWar(0, playerId); self.renderDiplomacy(); }, true);
+        }
+        addBtn('Dismiss', () => self.closeDialogue());
+        break;
+      default:
+        // greet, compliment, farewell, ask_about, other
+        addBtn('🎤 Say More', () => self.startVoiceChat());
+        if (!atWar) {
+          addBtn('Declare War', () => { self.closeDialogue(); Game.declareWar(0, playerId); self.renderDiplomacy(); }, true);
+        }
+        if (atWar && warTurns >= 10) {
+          addBtn('Make Peace', () => { self.closeDialogue(); Game.makePeace(0, playerId); self.renderDiplomacy(); });
+        }
+        addBtn('Farewell', () => self.closeDialogue());
+        break;
+    }
   },
 
   // ========== NARRATIVE SYSTEM ==========

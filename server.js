@@ -217,6 +217,86 @@ http.createServer((req, res) => {
     return;
   }
 
+  // Voice chat endpoint — classify player speech intent + generate leader response + TTS
+  if (req.url === '/api/chat-voice' && req.method === 'POST') {
+    readBody(req, (err, body) => {
+      if (err) return sendJson(res, 400, { error: 'Bad request' });
+      if (!OPENAI_API_KEY) return sendJson(res, 503, { error: 'No API key' });
+      const { speech = '', leader = '', context = '', relation = 0, player_name = 'Player' } = body;
+      if (!speech) return sendJson(res, 400, { error: 'No speech' });
+
+      const relStr = relation < -20 ? 'hostile' : relation < 20 ? 'neutral' : 'friendly';
+
+      // Step 1: Classify intent + generate in-character response in one call
+      const messages = [
+        { role: 'system', content: SYSTEM_PROMPT + `\n\nThe player said something to ${leader}. First classify their intent, then respond in character.\nRespond in EXACTLY this JSON format:\n{"intent":"<one of: greet, trade_offer, alliance_offer, peace_offer, demand, threaten, compliment, insult, ask_about, farewell, other>","response":"<your in-character 2-3 sentence response>"}` },
+        { role: 'user', content: `You are ${leader}. The player (${player_name}) said: "${speech}"\nRelations: ${relation}/100 (${relStr}). Context: ${context}\nClassify intent and respond in character as JSON.` }
+      ];
+
+      callLLM(messages, 200, (err, text) => {
+        if (err) return sendJson(res, 503, { error: 'LLM failed' });
+
+        let intent = 'other';
+        let response = text || '';
+        try {
+          // Extract JSON from response (may have markdown fencing)
+          const jsonMatch = text.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            intent = parsed.intent || 'other';
+            response = parsed.response || text;
+          }
+        } catch (e) {
+          // If JSON parse fails, use raw text as response
+          response = text.replace(/```json|```/g, '').replace(/^\s*\{.*\}\s*$/s, '').trim() || text;
+        }
+
+        // Step 2: TTS the leader's response
+        const cacheKey = crypto.createHash('md5').update(response).digest('hex');
+        const cachePath = path.join(TTS_CACHE_DIR, 'leader_' + cacheKey + '.mp3');
+
+        if (fs.existsSync(cachePath)) {
+          const audioData = fs.readFileSync(cachePath);
+          return sendJson(res, 200, { intent, response, audio: audioData.toString('base64'), cached: true });
+        }
+
+        const ttsPayload = JSON.stringify({
+          model: 'tts-1',
+          input: response.substring(0, 500),
+          voice: 'onyx',
+          response_format: 'mp3',
+          speed: 0.95
+        });
+        const ttsOpts = {
+          hostname: 'api.openai.com', port: 443, path: '/v1/audio/speech',
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${OPENAI_API_KEY}`,
+            'Content-Length': Buffer.byteLength(ttsPayload)
+          }
+        };
+        const ttsReq = https.request(ttsOpts, (r) => {
+          if (r.statusCode !== 200) {
+            return sendJson(res, 200, { intent, response, audio: null });
+          }
+          const chunks = [];
+          r.on('data', c => chunks.push(c));
+          r.on('end', () => {
+            const audioBuffer = Buffer.concat(chunks);
+            try { fs.writeFileSync(cachePath, audioBuffer); } catch (e) {}
+            sendJson(res, 200, { intent, response, audio: audioBuffer.toString('base64'), cached: false });
+          });
+        });
+        ttsReq.on('error', () => sendJson(res, 200, { intent, response, audio: null }));
+        ttsReq.setTimeout(30000, () => { ttsReq.destroy(); sendJson(res, 200, { intent, response, audio: null }); });
+        ttsReq.write(ttsPayload);
+        ttsReq.end();
+      });
+    });
+    return;
+  }
+
   // Combined narrate + voice endpoint — generates unique text via LLM then TTS
   if (req.url === '/api/narrate-voice' && req.method === 'POST') {
     readBody(req, (err, body) => {
