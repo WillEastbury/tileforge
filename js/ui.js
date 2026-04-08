@@ -1631,8 +1631,24 @@ const UI = {
     quoteEl.textContent = '"' + quote + '"';
     attrEl.textContent = attribution || '';
     overlay.classList.remove('hidden');
-    // Request TTS in background
-    this._requestTTS(quote);
+  },
+
+  // Show narration with pre-fetched audio (base64 mp3)
+  showNarrationWithAudio(text, attribution, icon, audioBase64) {
+    this.showNarrationOverlay(text, attribution, icon);
+    if (audioBase64) {
+      try {
+        if (this.musicPlayer) this.musicPlayer.volume = 0.1;
+        const audioUrl = 'data:audio/mpeg;base64,' + audioBase64;
+        this._narrationAudio = new Audio(audioUrl);
+        this._narrationAudio.volume = 1.0;
+        this._narrationAudio.play().catch(() => {});
+        this._narrationAudio.onended = () => {
+          if (this.musicPlayer) this.musicPlayer.volume = 0.5;
+          this._narrationAudio = null;
+        };
+      } catch (e) {}
+    }
   },
 
   dismissNarration() {
@@ -1641,74 +1657,89 @@ const UI = {
     if (this._narrationAudio) {
       this._narrationAudio.pause();
       this._narrationAudio = null;
+      if (this.musicPlayer) this.musicPlayer.volume = 0.5;
     }
     // Process next queued narration
     if (this._narrationQueue.length > 0) {
       const next = this._narrationQueue.shift();
-      setTimeout(() => this.showNarrationOverlay(next.quote, next.attribution, next.icon), 300);
+      setTimeout(() => next.fn(), 300);
     }
   },
 
-  async _requestTTS(text) {
+  async _requestNarrateVoice(prompt, context) {
     try {
-      const resp = await fetch('/api/tts', {
+      const resp = await fetch('/api/narrate-voice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text })
+        body: JSON.stringify({
+          prompt,
+          context: Game.state ? 'Turn ' + Game.state.turn + ', Year ' + Game.getYearString() + ', Era: ' + (Game.state.players[0].era || 'caveman') : '',
+          style: NARRATION_PROMPTS.narrator_style
+        })
       });
-      if (!resp.ok) return;
-      const blob = await resp.blob();
-      const url = URL.createObjectURL(blob);
-      // Fade background music
-      if (this.musicPlayer) this.musicPlayer.volume = 0.1;
-      this._narrationAudio = new Audio(url);
-      this._narrationAudio.volume = 1.0;
-      this._narrationAudio.play().catch(() => {});
-      this._narrationAudio.onended = () => {
-        URL.revokeObjectURL(url);
-        if (this.musicPlayer) this.musicPlayer.volume = 0.5;
-        this._narrationAudio = null;
-      };
+      if (!resp.ok) return null;
+      return await resp.json();
     } catch (e) {
-      // TTS unavailable — quote text still shows
+      return null;
     }
   },
 
-  queueNarration(quote, attribution, icon) {
+  queueNarration(narrateFn) {
     if (!document.getElementById('narration-overlay').classList.contains('hidden')) {
-      this._narrationQueue.push({ quote, attribution, icon });
+      this._narrationQueue.push({ fn: narrateFn });
     } else {
-      this.showNarrationOverlay(quote, attribution, icon);
+      narrateFn();
     }
   },
 
   narrateWonder(wonderId) {
-    const q = NARRATION_QUOTES.wonders[wonderId];
-    if (!q) return;
+    const prompt = NARRATION_PROMPTS.wonders[wonderId];
+    if (!prompt) return;
     const w = WONDERS.find(w => w.id === wonderId);
     const name = w ? w.name : wonderId;
-    this.queueNarration(q, '— On the completion of ' + name, '🏛️');
+    this.queueNarration(async () => {
+      const result = await this._requestNarrateVoice(prompt);
+      if (result && result.text) {
+        this.showNarrationWithAudio(result.text, '— On the completion of ' + name, '🏛️', result.audio);
+      }
+    });
   },
 
   narrateTech(techId) {
-    const q = NARRATION_QUOTES.techs[techId];
-    if (!q) return;
+    const prompt = NARRATION_PROMPTS.techs[techId];
+    if (!prompt) return;
     const t = TECHS.find(t => t.id === techId);
     const name = t ? t.name : techId;
-    this.queueNarration(q, '— On the discovery of ' + name, '🔬');
+    this.queueNarration(async () => {
+      const result = await this._requestNarrateVoice(prompt);
+      if (result && result.text) {
+        this.showNarrationWithAudio(result.text, '— On the discovery of ' + name, '🔬', result.audio);
+      }
+    });
   },
 
   narrateEra(era) {
-    const q = NARRATION_QUOTES.eras[era];
-    if (!q) return;
+    const prompt = NARRATION_PROMPTS.eras[era];
+    if (!prompt) return;
     const eraName = typeof ERA_NAMES !== 'undefined' ? ERA_NAMES[era] : era;
-    this.queueNarration(q, '— The ' + eraName + ' Era dawns', '🌅');
+    this.queueNarration(async () => {
+      const result = await this._requestNarrateVoice(prompt);
+      if (result && result.text) {
+        this.showNarrationWithAudio(result.text, '— The ' + eraName + ' Era dawns', '🌅', result.audio);
+      }
+    });
   },
 
   narrateArtifact(artifact) {
-    const q = NARRATION_QUOTES.artifacts[artifact.type];
-    if (!q) return;
-    this.queueNarration(q, '— ' + artifact.name + ' acquired', '📖');
+    const prompt = NARRATION_PROMPTS.artifacts[artifact.type];
+    if (!prompt) return;
+    const extraContext = 'The specific artifact is: ' + artifact.name;
+    this.queueNarration(async () => {
+      const result = await this._requestNarrateVoice(prompt + ' ' + extraContext);
+      if (result && result.text) {
+        this.showNarrationWithAudio(result.text, '— ' + artifact.name + ' acquired', '📖', result.audio);
+      }
+    });
   },
 
   // ========== DIPLOMACY DIALOGUE INTEGRATION ==========
@@ -1784,8 +1815,13 @@ const UI = {
       this.playEraMusic(Game.state.players[0].era);
     };
     // Narrate the intro
-    if (NARRATION_QUOTES && NARRATION_QUOTES.intro) {
-      this.queueNarration(NARRATION_QUOTES.intro, "— Apollo's Time", '🔥');
+    if (NARRATION_PROMPTS && NARRATION_PROMPTS.intro) {
+      this.queueNarration(async () => {
+        const result = await this._requestNarrateVoice(NARRATION_PROMPTS.intro);
+        if (result && result.text) {
+          this.showNarrationWithAudio(result.text, "— Apollo's Time", '🔥', result.audio);
+        }
+      });
     }
   },
 

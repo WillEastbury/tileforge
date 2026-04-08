@@ -217,6 +217,90 @@ http.createServer((req, res) => {
     return;
   }
 
+  // Combined narrate + voice endpoint — generates unique text via LLM then TTS
+  if (req.url === '/api/narrate-voice' && req.method === 'POST') {
+    readBody(req, (err, body) => {
+      if (err) return sendJson(res, 400, { error: 'Bad request' });
+      if (!OPENAI_API_KEY) return sendJson(res, 503, { error: 'No API key' });
+      const { prompt = '', context = '', style = '' } = body;
+      if (!prompt) return sendJson(res, 400, { error: 'No prompt' });
+
+      // Step 1: Generate narration text via LLM
+      const narrationStyle = style || "You are the gravelly-voiced narrator of a 4X civilization game, like Leonard Nimoy in Civilization IV or Liam Neeson reading epic history. Speak in second person to the player ('you', 'your people'). Be dramatic, poetic, and brief — 2-3 sentences maximum. Never break character. Do not use quotation marks around your response.";
+      const messages = [
+        { role: 'system', content: narrationStyle },
+        { role: 'user', content: prompt + (context ? ' Game context: ' + context : '') }
+      ];
+      callLLM(messages, 120, (err, text) => {
+        if (err) return sendJson(res, 503, { error: 'LLM failed' });
+        if (!text) return sendJson(res, 503, { error: 'Empty response' });
+
+        // Step 2: Check TTS cache for this generated text
+        const cacheKey = crypto.createHash('md5').update(text).digest('hex');
+        const cachePath = path.join(TTS_CACHE_DIR, cacheKey + '.mp3');
+
+        function sendAudio(audioPath, cacheStatus) {
+          const stat = fs.statSync(audioPath);
+          const audioData = fs.readFileSync(audioPath);
+          // Return JSON with text + base64 audio
+          sendJson(res, 200, {
+            text: text,
+            audio: audioData.toString('base64'),
+            cached: cacheStatus === 'hit'
+          });
+        }
+
+        if (fs.existsSync(cachePath)) {
+          return sendAudio(cachePath, 'hit');
+        }
+
+        // Step 3: Generate TTS
+        const payload = JSON.stringify({
+          model: 'tts-1',
+          input: text.substring(0, 500),
+          voice: 'onyx',
+          response_format: 'mp3',
+          speed: 0.9
+        });
+        const opts = {
+          hostname: 'api.openai.com', port: 443, path: '/v1/audio/speech',
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${OPENAI_API_KEY}`,
+            'Content-Length': Buffer.byteLength(payload)
+          }
+        };
+        const ttsReq = https.request(opts, (r) => {
+          if (r.statusCode !== 200) {
+            // TTS failed — still return the text without audio
+            let errBody = '';
+            r.on('data', c => errBody += c);
+            r.on('end', () => sendJson(res, 200, { text: text, audio: null }));
+            return;
+          }
+          const chunks = [];
+          r.on('data', c => chunks.push(c));
+          r.on('end', () => {
+            const audioBuffer = Buffer.concat(chunks);
+            // Cache to disk
+            try { fs.writeFileSync(cachePath, audioBuffer); } catch (e) {}
+            sendJson(res, 200, {
+              text: text,
+              audio: audioBuffer.toString('base64'),
+              cached: false
+            });
+          });
+        });
+        ttsReq.on('error', () => sendJson(res, 200, { text: text, audio: null }));
+        ttsReq.setTimeout(30000, () => { ttsReq.destroy(); sendJson(res, 200, { text: text, audio: null }); });
+        ttsReq.write(payload);
+        ttsReq.end();
+      });
+    });
+    return;
+  }
+
   // CORS preflight
   if (req.method === 'OPTIONS') {
     res.writeHead(200, {
