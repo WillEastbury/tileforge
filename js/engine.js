@@ -1240,6 +1240,9 @@ const Game = {
         p.researchProgress = 0;
         p.currentResearch = null;
         if (playerId === 0) UI.notify('Research complete: ' + tech.name);
+        if (playerId === 0 && typeof UI !== 'undefined' && UI.narrateTech) {
+          UI.narrateTech(tech.id);
+        }
         // Update era
         const eraIdx = ERAS.indexOf(tech.era);
         const currentEraIdx = ERAS.indexOf(p.era);
@@ -1249,6 +1252,9 @@ const Game = {
             this.state.eraHistory.push({turn: this.state.turn, era: tech.era});
             UI.narrateEvent('civilization entered the ' + tech.era + ' era');
             UI.showEraIntro(tech.era);
+            if (typeof UI !== 'undefined' && UI.narrateEra) {
+              UI.narrateEra(tech.era);
+            }
             UI.playEraMusic(tech.era);
             if (typeof UI !== 'undefined' && UI.playEraVideo) {
               UI.playEraVideo(tech.era);
@@ -1378,7 +1384,10 @@ const Game = {
     if (p.nationalBuildings && p.nationalBuildings.length > 0) {
       const newArts = this.processArtifacts(p);
       if (playerId === 0) {
-        for (const a of newArts) UI.notify('📜 Artifact acquired: ' + a.name + '!');
+        for (const a of newArts) {
+          UI.notify('📜 Artifact acquired: ' + a.name + '!');
+          if (typeof UI !== 'undefined' && UI.narrateArtifact) UI.narrateArtifact(a);
+        }
       }
     }
 
@@ -1427,7 +1436,10 @@ const Game = {
         // Immediately check for artifacts
         const newArts = this.processArtifacts(p);
         if (city.owner === 0) {
-          for (const a of newArts) UI.notify('Artifact acquired: ' + a.name + '!');
+          for (const a of newArts) {
+            UI.notify('Artifact acquired: ' + a.name + '!');
+            if (typeof UI !== 'undefined' && UI.narrateArtifact) UI.narrateArtifact(a);
+          }
         }
       }
     } else if (q.type === 'wonder') {
@@ -1440,6 +1452,9 @@ const Game = {
         if (city.owner === 0) UI.narrateEvent(city.name + ' completed ' + q.name);
         if (city.owner === 0 && typeof UI !== 'undefined' && UI.playWonderVideo) {
           UI.playWonderVideo(q.id);
+        }
+        if (city.owner === 0 && typeof UI !== 'undefined' && UI.narrateWonder) {
+          UI.narrateWonder(q.id);
         }
         // Free tech
         const w = WONDERS.find(w => w.id === q.id);

@@ -868,6 +868,84 @@ Take it.`,
   }
 };
 
+// ========== NARRATION QUOTES ==========
+// Spoken by the gravelly narrator voice on discovery/completion events
+const NARRATION_QUOTES = {
+  // Intro narration — spoken over the prologue
+  intro: "Before the first stone was laid, before the first word was spoken, the gods looked down and saw a world brimming with untamed potential. One god dissented. One looked upon the shivering mortals and saw not what they were — but what they could become. That god was you.",
+  // Era advancement quotes
+  eras: {
+    caveman: "In the beginning, there was only the dark and the cold. But from the first spark of flame, your people dared to dream of something more.",
+    ancient: "Mud and clay became walls. Walls became cities. And cities became the cradle of everything your people would one day call civilization.",
+    classical: "Marble columns rise against the sky. Your philosophers ask questions that will echo through ten thousand years. This is the age that will define what it means to be civilized.",
+    medieval: "The old world has crumbled, but from its ruins rise castles and cathedrals. In the long dark of the medieval night, your people forge an iron will that nothing can break.",
+    renaissance: "The veil lifts. Artists and inventors reshape the world with brush and gear. Your ships sail beyond the edge of every map, and nothing — nothing — will ever be the same.",
+    industrial: "The machines have awakened. Steel and steam reshape the earth itself. The smokestacks of progress rise like the pillars of a new world — magnificent and terrible in equal measure.",
+    modern: "The atom splits. The world holds its breath. Your civilization commands power that would have been called godhood in any previous age.",
+    ai: "You have created a mind that thinks faster than any mortal. The question is no longer what your people can build — but what they have become.",
+    mars: "Three shuttles arc through the Martian sky. Ten thousand years of history led to this single, impossible moment. Your people are no longer bound to one world."
+  },
+  // Wonder completion quotes (selection of notable wonders)
+  wonders: {
+    great_pyramid: "The Great Pyramid rises from the desert sands — a monument to the audacity of mortals who dared to build a stairway to the gods themselves.",
+    stonehenge: "Massive stones, dragged across impossible distances, aligned with the heavens. Your people have read the stars and written their answer in stone.",
+    colosseum: "Fifty thousand voices roar as one. In the Colosseum, your civilization has built a temple to the most ancient of all entertainments — the spectacle of human struggle.",
+    great_library: "Every scroll, every text, every whispered secret of the ancient world — gathered beneath one roof. The Great Library stands as humanity's first declaration of war against ignorance.",
+    hanging_gardens: "Gardens cascade from impossible heights, watered by engineering that defies the desert itself. In Babylon, your people have proven that beauty can flourish even in the harshest of lands.",
+    terracotta_army: "Eight thousand clay soldiers stand in eternal formation beneath the earth. An army for the afterlife — built by an emperor who refused to face death alone.",
+    great_wall: "Stone upon stone, mile upon mile, the Great Wall stretches across the horizon. It is not merely a wall — it is a statement. This far, and no further.",
+    hagia_sophia: "Light pours through forty windows at the base of the dome, as if heaven itself is reaching down. The Hagia Sophia is not a building — it is a prayer made manifest in stone.",
+    notre_dame: "Flying buttresses soar like the wings of angels. Notre-Dame rises above the city, its bells calling across centuries to every soul who ever looked upward and wondered.",
+    machu_picchu: "Hidden in the clouds, perched on the spine of the world, Machu Picchu stands where no city should be possible. Your people have conquered the mountains themselves.",
+    sistine_chapel: "A single man, lying on his back for four years, painting the hand of God reaching toward the hand of Man. The ceiling of the Sistine Chapel is humanity's greatest love letter to its own potential.",
+    taj_mahal: "White marble gleams in the moonlight, a monument to a love so vast it required the labor of twenty thousand souls to express. The Taj Mahal is grief and beauty made eternal.",
+    panama_canal: "Two oceans, separated since the dawn of time, now joined by human will and engineering. Ships pass through the mountains. The Panama Canal is geography, rewritten.",
+    eiffel_tower: "A thousand feet of iron lattice, mocked as an eyesore and celebrated as a masterpiece. The Eiffel Tower reaches toward the sky like an exclamation mark at the end of the industrial age.",
+    statue_of_liberty: "She lifts her torch above the harbor, a beacon for every tired soul who ever dreamed of freedom. Give me your huddled masses, she whispers. I will light the way.",
+    hoover_dam: "A wall of concrete holding back the fury of nature itself. The Hoover Dam is not merely engineering — it is humanity's refusal to accept the world as it found it.",
+    manhattan_project: "In the desert of New Mexico, a flash brighter than the sun. The world before this moment and the world after are two entirely different places.",
+    united_nations: "For the first time in history, every nation on earth sits at the same table. The United Nations is built not on stone but on the fragile, radical belief that talking is better than fighting.",
+    apollo_program: "One small step on lunar dust. One giant leap for every dreamer who ever looked up at the moon and whispered: someday.",
+    internet: "A web of light connecting every mind on earth. The Internet is not a technology — it is the nervous system of a new kind of civilization.",
+    iss: "Orbiting two hundred miles above the earth, astronauts from nations that once aimed missiles at each other now share meals and watch the sunrise together. The International Space Station is proof that cooperation can reach the stars.",
+    iter: "The power of the sun, captured in a magnetic bottle. ITER is not merely a reactor — it is humanity's audacious attempt to steal fire from the gods. Again.",
+    mars_colony: "Red dust beneath human boots. The first city on another world takes its first breath. Ten thousand years of civilization have led to this: we are no longer a one-planet species."
+  },
+  // Tech completion quotes (milestone techs)
+  techs: {
+    fire: "Fire. The first technology. The first defiance against the cold and the dark. Everything that follows — every city, every empire, every rocket — begins here.",
+    agriculture: "A seed is planted. A seed is harvested. With agriculture, your people have broken free from the tyranny of the hunt and begun to shape the world.",
+    writing: "Marks on clay. Words that outlive the speaker. With writing, your people have conquered death itself — for ideas, at least.",
+    bronze_working: "The first gleam of bronze in the forge-light. Stronger than stone, sharper than bone. The age of metal has begun.",
+    iron_working: "Iron — harder, cheaper, and more plentiful than bronze. The old world melts away in the heat of the new forge.",
+    mathematics: "Numbers. Patterns. The hidden architecture of reality itself. With mathematics, your people can finally measure the world — and begin to understand it.",
+    philosophy: "Why are we here? What is justice? What is the good life? Your philosophers ask the questions that will haunt and inspire humanity for millennia.",
+    engineering: "Arches, aqueducts, and roads that will last two thousand years. Your engineers have learned to bend the physical world to their will.",
+    compass: "A trembling needle points north, and suddenly the whole world opens up. The compass makes every ocean crossable, every horizon reachable.",
+    gunpowder: "Black powder. A mixture so simple a child could make it, so powerful it will render every castle wall and suit of armor obsolete.",
+    printing_press: "Words multiplied a thousandfold. Knowledge escaping from monastery walls into the hands of common people. The printing press is a revolution disguised as a machine.",
+    astronomy: "Your people turn their eyes to the heavens and see not gods, but laws. The universe is vast, cold, and beautiful — and it obeys rules that the human mind can comprehend.",
+    steam_power: "The piston rises. The wheel turns. Steam power is not merely a technology — it is the beginning of the end of the world that came before.",
+    electricity: "Lightning, tamed and channeled through copper wire. Darkness retreats from every corner of your civilization. The age of electricity has dawned.",
+    flight: "A machine rises from the earth and takes to the sky. For the first time in history, a human looks down upon the world from above. Everything looks different from up here.",
+    nuclear_fission: "The atom, split open like a walnut, releases the energy that binds the universe together. This knowledge can power cities — or destroy them.",
+    computing: "Zeros and ones. A machine that thinks in lightning. The computer will reshape every aspect of civilization in ways its creators cannot yet imagine.",
+    internet_tech: "A web of light connecting minds across continents in the blink of an eye. Distance dies. The world becomes a village.",
+    artificial_intelligence: "A mind that was not born, but built. It learns. It adapts. And it raises a question humanity has never had to answer before: what happens when the student surpasses the teacher?",
+    fusion_power: "The fire of the stars themselves, captured and controlled. Unlimited clean energy — the dream of every generation since the first campfire.",
+    mars_colonization: "The blueprints for a city on another world. Your engineers sketch domes and gardens on red Martian soil. Humanity prepares to become a multi-planetary species."
+  },
+  // Artifact discovery quotes
+  artifacts: {
+    books: "A new volume joins the collection — words preserved against the erosion of time. Every book is a small act of immortality.",
+    ancient_tech: "An artifact from humanity's ingenious past. Every invention tells a story of a mind that looked at the world and thought: I can make this better.",
+    computers: "Silicon and circuits that changed the world. These machines are the ancestors of the digital age — primitive, revolutionary, and beautiful.",
+    films: "Moving pictures that captured the human experience and projected it onto screens around the world. Cinema taught us to dream in color.",
+    platinum_records: "Music that moved millions. A platinum record is not just a measure of sales — it is proof that a melody can cross borders, languages, and generations.",
+    sports_trophies: "Gold and silver, earned through sweat and determination. Every trophy represents the pinnacle of human physical achievement."
+  }
+};
+
 // Era music tracks — multiple tracks per era for variety, rotated instead of looping
 const ERA_MUSIC = {
   caveman: ['assets/music/caveman.mp3','assets/music/caveman_2.mp3','assets/music/caveman_3.mp3'],

@@ -230,6 +230,16 @@
       <video id="game-video" preload="none"></video>
       <button id="video-skip" onclick="UI.skipVideo()">Skip ▶</button>
     </div>
+
+    <!-- Narration Book Overlay -->
+    <div id="narration-overlay" class="hidden">
+      <div id="narration-book">
+        <div id="narration-icon">📜</div>
+        <div id="narration-quote"></div>
+        <div id="narration-attribution"></div>
+        <button id="narration-dismiss" onclick="UI.dismissNarration()">Continue</button>
+      </div>
+    </div>
   </div>
 </div>
 

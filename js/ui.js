@@ -1616,6 +1616,101 @@ const UI = {
     this.requestNarration(event).then(text => this.showNarration(text));
   },
 
+  // ========== VOICE NARRATION OVERLAY ==========
+
+  _narrationAudio: null,
+  _narrationQueue: [],
+
+  showNarrationOverlay(quote, attribution, icon) {
+    const overlay = document.getElementById('narration-overlay');
+    const quoteEl = document.getElementById('narration-quote');
+    const attrEl = document.getElementById('narration-attribution');
+    const iconEl = document.getElementById('narration-icon');
+    if (!overlay) return;
+    iconEl.textContent = icon || '📜';
+    quoteEl.textContent = '"' + quote + '"';
+    attrEl.textContent = attribution || '';
+    overlay.classList.remove('hidden');
+    // Request TTS in background
+    this._requestTTS(quote);
+  },
+
+  dismissNarration() {
+    const overlay = document.getElementById('narration-overlay');
+    if (overlay) overlay.classList.add('hidden');
+    if (this._narrationAudio) {
+      this._narrationAudio.pause();
+      this._narrationAudio = null;
+    }
+    // Process next queued narration
+    if (this._narrationQueue.length > 0) {
+      const next = this._narrationQueue.shift();
+      setTimeout(() => this.showNarrationOverlay(next.quote, next.attribution, next.icon), 300);
+    }
+  },
+
+  async _requestTTS(text) {
+    try {
+      const resp = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      });
+      if (!resp.ok) return;
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      // Fade background music
+      if (this.musicPlayer) this.musicPlayer.volume = 0.1;
+      this._narrationAudio = new Audio(url);
+      this._narrationAudio.volume = 1.0;
+      this._narrationAudio.play().catch(() => {});
+      this._narrationAudio.onended = () => {
+        URL.revokeObjectURL(url);
+        if (this.musicPlayer) this.musicPlayer.volume = 0.5;
+        this._narrationAudio = null;
+      };
+    } catch (e) {
+      // TTS unavailable — quote text still shows
+    }
+  },
+
+  queueNarration(quote, attribution, icon) {
+    if (!document.getElementById('narration-overlay').classList.contains('hidden')) {
+      this._narrationQueue.push({ quote, attribution, icon });
+    } else {
+      this.showNarrationOverlay(quote, attribution, icon);
+    }
+  },
+
+  narrateWonder(wonderId) {
+    const q = NARRATION_QUOTES.wonders[wonderId];
+    if (!q) return;
+    const w = WONDERS.find(w => w.id === wonderId);
+    const name = w ? w.name : wonderId;
+    this.queueNarration(q, '— On the completion of ' + name, '🏛️');
+  },
+
+  narrateTech(techId) {
+    const q = NARRATION_QUOTES.techs[techId];
+    if (!q) return;
+    const t = TECHS.find(t => t.id === techId);
+    const name = t ? t.name : techId;
+    this.queueNarration(q, '— On the discovery of ' + name, '🔬');
+  },
+
+  narrateEra(era) {
+    const q = NARRATION_QUOTES.eras[era];
+    if (!q) return;
+    const eraName = typeof ERA_NAMES !== 'undefined' ? ERA_NAMES[era] : era;
+    this.queueNarration(q, '— The ' + eraName + ' Era dawns', '🌅');
+  },
+
+  narrateArtifact(artifact) {
+    const q = NARRATION_QUOTES.artifacts[artifact.type];
+    if (!q) return;
+    this.queueNarration(q, '— ' + artifact.name + ' acquired', '📖');
+  },
+
   // ========== DIPLOMACY DIALOGUE INTEGRATION ==========
 
   async diplomacyGreet(playerId) {
@@ -1688,6 +1783,10 @@ const UI = {
     this._narrativeCallback = () => {
       this.playEraMusic(Game.state.players[0].era);
     };
+    // Narrate the intro
+    if (NARRATION_QUOTES && NARRATION_QUOTES.intro) {
+      this.queueNarration(NARRATION_QUOTES.intro, "— Apollo's Time", '🔥');
+    }
   },
 
   showEraIntro(era) {

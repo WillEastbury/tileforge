@@ -709,6 +709,75 @@ html, body { height: 100%; overflow: hidden; font-family: 'Segoe UI', system-ui,
 }
 #video-skip:hover { background: rgba(201,168,76,0.3); }
 
+/* Narration Book Overlay */
+#narration-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.85);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.5s ease;
+}
+#narration-overlay.hidden { display: none; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes bookOpen { from { transform: scale(0.8) rotateY(-10deg); opacity: 0; } to { transform: scale(1) rotateY(0); opacity: 1; } }
+#narration-book {
+  background: linear-gradient(135deg, #2a1810 0%, #3d2517 30%, #2a1810 100%);
+  border: 3px solid #c9a84c;
+  border-radius: 8px;
+  padding: 40px 50px;
+  max-width: 600px;
+  width: 90%;
+  text-align: center;
+  box-shadow: 0 0 60px rgba(201,168,76,0.3), inset 0 0 30px rgba(0,0,0,0.5);
+  animation: bookOpen 0.6s ease;
+  position: relative;
+}
+#narration-book::before, #narration-book::after {
+  content: '❧';
+  position: absolute;
+  color: #c9a84c;
+  font-size: 24px;
+  opacity: 0.5;
+}
+#narration-book::before { top: 10px; left: 20px; }
+#narration-book::after { bottom: 10px; right: 20px; transform: rotate(180deg); }
+#narration-icon {
+  font-size: 48px;
+  margin-bottom: 20px;
+  filter: drop-shadow(0 0 10px rgba(201,168,76,0.5));
+}
+#narration-quote {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 18px;
+  line-height: 1.7;
+  color: #e8d5b0;
+  font-style: italic;
+  margin-bottom: 20px;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+#narration-attribution {
+  font-size: 14px;
+  color: #c9a84c;
+  margin-bottom: 25px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+#narration-dismiss {
+  background: linear-gradient(to bottom, #c9a84c, #a07830);
+  border: none;
+  color: #1a0f08;
+  padding: 10px 30px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  border-radius: 4px;
+  letter-spacing: 1px;
+}
+#narration-dismiss:hover { background: linear-gradient(to bottom, #d4b45c, #b08838); }
+
 /* ========== RESPONSIVE: 4K / LARGE SCREENS (min-width: 2560px) ========== */
 @media (min-width: 2560px) {
   html, body { font-size: 16px; }

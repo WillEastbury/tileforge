@@ -2,6 +2,11 @@ const http = require('http');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
+
+// TTS cache directory — d:/home on Azure App Service, /tmp locally
+const TTS_CACHE_DIR = fs.existsSync('d:/home') ? 'd:/home/tts-cache' : path.join(__dirname, 'tts-cache');
+try { fs.mkdirSync(TTS_CACHE_DIR, { recursive: true }); } catch (e) {}
 
 const PORT = process.env.PORT || 8080;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
@@ -135,6 +140,91 @@ http.createServer((req, res) => {
         sendJson(res, 200, { response: text, source: 'bitnet-sidecar' });
       });
     });
+    return;
+  }
+
+  // TTS endpoint — generate voice narration using OpenAI TTS, with disk cache
+  if (req.url === '/api/tts' && req.method === 'POST') {
+    readBody(req, (err, body) => {
+      if (err) return sendJson(res, 400, { error: 'Bad request' });
+      if (!OPENAI_API_KEY) return sendJson(res, 503, { error: 'No API key' });
+      const { text = '' } = body;
+      if (!text) return sendJson(res, 400, { error: 'No text provided' });
+
+      // Check cache first
+      const cacheKey = crypto.createHash('md5').update(text.substring(0, 500)).digest('hex');
+      const cachePath = path.join(TTS_CACHE_DIR, cacheKey + '.mp3');
+      if (fs.existsSync(cachePath)) {
+        res.writeHead(200, {
+          'Content-Type': 'audio/mpeg',
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'public, max-age=86400',
+          'X-TTS-Cache': 'hit'
+        });
+        fs.createReadStream(cachePath).pipe(res);
+        return;
+      }
+
+      const payload = JSON.stringify({
+        model: 'tts-1',
+        input: text.substring(0, 500),
+        voice: 'onyx',
+        response_format: 'mp3',
+        speed: 0.9
+      });
+      const opts = {
+        hostname: 'api.openai.com', port: 443, path: '/v1/audio/speech',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${OPENAI_API_KEY}`,
+          'Content-Length': Buffer.byteLength(payload)
+        }
+      };
+      const ttsReq = https.request(opts, (r) => {
+        if (r.statusCode !== 200) {
+          let errBody = '';
+          r.on('data', c => errBody += c);
+          r.on('end', () => sendJson(res, r.statusCode, { error: 'TTS failed', details: errBody }));
+          return;
+        }
+        // Stream to response AND cache to disk
+        const cacheStream = fs.createWriteStream(cachePath);
+        res.writeHead(200, {
+          'Content-Type': 'audio/mpeg',
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'public, max-age=86400',
+          'X-TTS-Cache': 'miss'
+        });
+        r.on('data', (chunk) => {
+          res.write(chunk);
+          cacheStream.write(chunk);
+        });
+        r.on('end', () => {
+          res.end();
+          cacheStream.end();
+        });
+        r.on('error', () => {
+          cacheStream.end();
+          try { fs.unlinkSync(cachePath); } catch (e) {}
+        });
+      });
+      ttsReq.on('error', (e) => sendJson(res, 503, { error: 'TTS request failed' }));
+      ttsReq.setTimeout(30000, () => { ttsReq.destroy(); sendJson(res, 504, { error: 'TTS timeout' }); });
+      ttsReq.write(payload);
+      ttsReq.end();
+    });
+    return;
+  }
+
+  // CORS preflight
+  if (req.method === 'OPTIONS') {
+    res.writeHead(200, {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type'
+    });
+    res.end();
     return;
   }
 
