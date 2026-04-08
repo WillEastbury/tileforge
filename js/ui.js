@@ -2145,6 +2145,8 @@ const UI = {
       clearTimeout(this._eraIntroTimer);
       this._eraIntroTimer = null;
     }
+    // Re-unlock audio on this user gesture
+    if (!this._audioUnlocked) this.unlockAudio();
     if (this._narrativeCallback) {
       this._narrativeCallback();
       this._narrativeCallback = null;
@@ -2169,6 +2171,28 @@ const UI = {
         this.playNextTrack(this.currentEraMusic);
       }
     });
+  },
+
+  // Unlock audio context on user gesture — browsers block audio until interaction
+  unlockAudio() {
+    // Create and resume AudioContext to unlock web audio
+    if (!this._audioCtx) {
+      this._audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (this._audioCtx.state === 'suspended') {
+      this._audioCtx.resume().catch(() => {});
+    }
+    // Also "warm up" the music player with a silent play
+    if (this.musicPlayer) {
+      this.musicPlayer.volume = 0;
+      this.musicPlayer.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+      this.musicPlayer.play().then(() => {
+        this.musicPlayer.pause();
+        this.musicPlayer.volume = this.musicVolume;
+        this.musicPlayer.src = '';
+      }).catch(() => {});
+    }
+    this._audioUnlocked = true;
   },
 
   pickNextTrack(era) {
@@ -2258,8 +2282,14 @@ const UI = {
     if (!overlay || !video) { if (callback) callback(); return; }
     this._videoCallback = callback;
     video.src = src;
+    video.playsInline = true;
+    video.muted = false;
     overlay.classList.remove('hidden');
-    video.play().catch(() => { this.skipVideo(); });
+    video.play().catch(() => {
+      // Autoplay blocked — try muted (browsers allow muted autoplay)
+      video.muted = true;
+      video.play().catch(() => { this.skipVideo(); });
+    });
     video.onended = () => { this.skipVideo(); };
     video.onerror = () => { this.skipVideo(); };
   },

@@ -9,6 +9,10 @@ function startNewGame() {
     difficulty: parseInt(document.getElementById('difficulty').value)
   };
 
+  // Unlock audio immediately on user click — must happen before async work
+  UI.initMusic();
+  UI.unlockAudio();
+
   UI.showScreen('game-screen');
 
   if (!Renderer.initialized) {
@@ -35,7 +39,6 @@ function startNewGame() {
   Renderer.updateMinimap();
   UI.updateTopBar();
   UI.updateRightPanel();
-  UI.initMusic();
   // Play intro video first, then show prologue text overlay
   UI.playIntroVideo(function() {
     UI.showPrologue();
@@ -138,6 +141,7 @@ function loadGameSlot(index) {
   UI.updateTopBar();
   UI.updateRightPanel();
   if (!UI.musicPlayer) UI.initMusic();
+  UI.unlockAudio();
   UI.playEraMusic(p.era);
   UI.notify('Game loaded from Slot ' + (index + 1));
 }
