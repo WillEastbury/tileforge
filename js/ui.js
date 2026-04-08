@@ -2180,16 +2180,10 @@ const UI = {
     if (this._audioCtx.state === 'suspended') {
       this._audioCtx.resume().catch(() => {});
     }
-    // Also "warm up" the music player with a silent play
-    if (this.musicPlayer) {
-      this.musicPlayer.volume = 0;
-      this.musicPlayer.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
-      this.musicPlayer.play().then(() => {
-        this.musicPlayer.pause();
-        this.musicPlayer.volume = this.musicVolume;
-        this.musicPlayer.src = '';
-      }).catch(() => {});
-    }
+    // Warm up audio pipeline with a throwaway element (don't touch musicPlayer)
+    const warmup = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=');
+    warmup.volume = 0;
+    warmup.play().then(() => warmup.pause()).catch(() => {});
     this._audioUnlocked = true;
   },
 
