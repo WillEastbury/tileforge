@@ -36,7 +36,10 @@ function startNewGame() {
   UI.updateTopBar();
   UI.updateRightPanel();
   UI.initMusic();
-  UI.showPrologue();
+  // Play intro video first, then show prologue text overlay
+  UI.playIntroVideo(function() {
+    UI.showPrologue();
+  });
   UI.notify('Welcome to Apollo\'s Time! Found your civilization and conquer the world.');
 }
 
