@@ -440,6 +440,8 @@ test.describe('Video & Narration', () => {
   test('playVideo shows overlay and sets video src', async ({ page }) => {
     await startGame(page, { mapSize: 'small', aiCount: '1', difficulty: 0 });
     await page.evaluate(() => {
+      window.__SKIP_VIDEO = false; // re-enable for this test
+      HTMLVideoElement.prototype.load = function() {};
       UI.playVideo('assets/video/intro.mp4', () => {});
     });
     await expect(page.locator('#video-overlay')).not.toHaveClass(/hidden/, { timeout: 2000 });
@@ -489,19 +491,22 @@ test.describe('Video & Narration', () => {
   test('video play() is called synchronously within user gesture on Start Game', async ({ page }) => {
     // This is the critical test: verify that video.play() is invoked during
     // the Start Game click handler (user gesture), not in a deferred setTimeout
-    await page.addInitScript(() => { window.__FORCE_CANVAS = true; });
+    await page.addInitScript(() => {
+      window.__FORCE_CANVAS = true;
+      // Stub video element to prevent real network loading
+      HTMLVideoElement.prototype.load = function() {};
+      HTMLVideoElement.prototype.play = function() { return Promise.resolve(); };
+    });
     await page.goto('/');
     // Intercept video.play() to record WHEN it's called relative to the click
     await page.evaluate(() => {
       window.__videoPlayCalls = [];
-      const origPlay = HTMLVideoElement.prototype.play;
       HTMLVideoElement.prototype.play = function() {
         window.__videoPlayCalls.push({
           time: performance.now(),
           src: this.src,
           muted: this.muted
         });
-        // Return resolved promise (Playwright doesn't have real video decode)
         return Promise.resolve();
       };
     });
@@ -534,7 +539,10 @@ test.describe('Video & Narration', () => {
   });
 
   test('prepareVideo starts play in gesture context, playIntroVideo wires callback', async ({ page }) => {
-    await page.addInitScript(() => { window.__FORCE_CANVAS = true; });
+    await page.addInitScript(() => {
+      window.__FORCE_CANVAS = true;
+      HTMLVideoElement.prototype.load = function() {};
+    });
     await page.goto('/');
     // Spy on video.play
     await page.evaluate(() => {
@@ -595,7 +603,10 @@ test.describe('Video & Narration', () => {
   });
 
   test('video attempts unmuted playback, falls back to muted', async ({ page }) => {
-    await page.addInitScript(() => { window.__FORCE_CANVAS = true; });
+    await page.addInitScript(() => {
+      window.__FORCE_CANVAS = true;
+      HTMLVideoElement.prototype.load = function() {};
+    });
     await page.goto('/');
     // Make first play() reject (simulating autoplay block), second succeed
     await page.evaluate(() => {
