@@ -618,30 +618,31 @@ test.describe('Video & Narration', () => {
 
   test('video playback pauses background music and resumes on skip', async ({ page }) => {
     await startGame(page, { mapSize: 'small', aiCount: '1', difficulty: 0 });
-    // Ensure music is playing
-    const musicBefore = await page.evaluate(() => {
+    // Simulate music playing by marking it as not-paused via a spy
+    const result = await page.evaluate(() => {
       if (!UI.musicPlayer) UI.initMusic();
-      UI.musicPlayer.src = 'assets/music/caveman.mp3';
       UI.musicEnabled = true;
-      return UI.musicPlayer.paused;
-    });
-    // Start a video — should pause music
-    await page.evaluate(() => {
-      UI.playVideo('assets/video/intro.mp4', () => {});
-    });
-    const musicDuringVideo = await page.evaluate(() => UI.musicPlayer.paused);
-    expect(musicDuringVideo).toBe(true);
-    // Skip video — should resume music
-    await page.evaluate(() => {
-      // Spy on play to verify it's called
-      window.__musicResumed = false;
+      // Make musicPlayer appear to be playing
+      let pauseCalled = false;
+      let playCalled = false;
+      const origPause = UI.musicPlayer.pause;
       const origPlay = UI.musicPlayer.play;
-      UI.musicPlayer.play = function() { window.__musicResumed = true; return Promise.resolve(); };
+      Object.defineProperty(UI.musicPlayer, 'paused', { get: () => pauseCalled, configurable: true });
+      UI.musicPlayer.pause = function() { pauseCalled = true; };
+      UI.musicPlayer.play = function() { playCalled = true; return Promise.resolve(); };
+      // Start video — should pause music
+      UI.playVideo('assets/video/intro.mp4', () => {});
+      const pausedDuringVideo = pauseCalled;
+      // Skip video — should resume music
       UI.skipVideo();
+      const resumedAfterSkip = playCalled;
+      // Restore
+      UI.musicPlayer.pause = origPause;
       UI.musicPlayer.play = origPlay;
+      return { pausedDuringVideo, resumedAfterSkip };
     });
-    const resumed = await page.evaluate(() => window.__musicResumed);
-    expect(resumed).toBe(true);
+    expect(result.pausedDuringVideo).toBe(true);
+    expect(result.resumedAfterSkip).toBe(true);
   });
 
   test('prologue uses browser TTS when server narration is unavailable', async ({ page }) => {
