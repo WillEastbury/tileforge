@@ -31,7 +31,11 @@ async function dismissOverlays(page) {
 // Start a new game with default settings and dismiss all overlays
 async function startGame(page, opts = {}) {
   // Force PixiJS Canvas2D mode for headless Chromium (no WebGL)
-  await page.addInitScript(() => { window.__FORCE_CANVAS = true; });
+  // Stub video.play() to prevent real video loading/buffering in tests
+  await page.addInitScript(() => {
+    window.__FORCE_CANVAS = true;
+    HTMLVideoElement.prototype.play = function() { return Promise.resolve(); };
+  });
   await page.goto('/');
   await expect(page.locator('#main-menu')).toHaveClass(/active/);
   await page.click('text=New Game');

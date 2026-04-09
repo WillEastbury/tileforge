@@ -17,7 +17,11 @@ async function dismissOverlays(page) {
 
 // Start a new game with default settings and dismiss all overlays
 async function startGame(page, opts = {}) {
-  await page.addInitScript(() => { window.__FORCE_CANVAS = true; });
+  await page.addInitScript(() => {
+    window.__FORCE_CANVAS = true;
+    // Stub video.play() to prevent real video loading/buffering in tests
+    HTMLVideoElement.prototype.play = function() { return Promise.resolve(); };
+  });
   await page.goto('/');
   await page.click('text=New Game');
 

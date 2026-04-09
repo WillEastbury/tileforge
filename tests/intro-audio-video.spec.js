@@ -11,7 +11,11 @@ test.describe('Intro Audio & Video', () => {
 
   test.beforeEach(async ({ page }) => {
     // Force Canvas2D mode (headless has no WebGL)
-    await page.addInitScript(() => { window.__FORCE_CANVAS = true; });
+    // Stub video.play() to prevent real video loading/buffering in tests
+    await page.addInitScript(() => {
+      window.__FORCE_CANVAS = true;
+      HTMLVideoElement.prototype.play = function() { return Promise.resolve(); };
+    });
   });
 
   test('music player initialised and plays on Start Game click', async ({ page }) => {
