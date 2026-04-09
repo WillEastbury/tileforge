@@ -19,7 +19,7 @@ async function dismissOverlays(page) {
 async function startGame(page, opts = {}) {
   await page.addInitScript(() => {
     window.__FORCE_CANVAS = true;
-    // Stub video.play() to prevent real video loading/buffering in tests
+    window.__SKIP_VIDEO = true;
     HTMLVideoElement.prototype.play = function() { return Promise.resolve(); };
   });
   await page.goto('/');

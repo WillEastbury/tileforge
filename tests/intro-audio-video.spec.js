@@ -14,6 +14,7 @@ test.describe('Intro Audio & Video', () => {
     // Stub video.play() to prevent real video loading/buffering in tests
     await page.addInitScript(() => {
       window.__FORCE_CANVAS = true;
+      window.__SKIP_VIDEO = true;
       HTMLVideoElement.prototype.play = function() { return Promise.resolve(); };
     });
   });
