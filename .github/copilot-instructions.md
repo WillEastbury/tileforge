@@ -41,11 +41,11 @@ Config: `playwright.config.js` — single worker, 60s timeout, 1024×768 viewpor
 
 | File | Object | Role | Lines |
 |------|--------|------|-------|
-| `js/data.js` | `TERRAINS`, `RESOURCES`, `TECHS`, `BUILDINGS`, `WONDERS`, `UNITS`, etc. | All game content as const arrays/objects | ~650 |
-| `js/engine.js` | `Game` | Core game state, turn processing, combat, city management, all 16 game systems | ~2100 |
-| `js/renderer.js` | `Renderer` | PixiJS rendering, camera, minimap, click handling, animations | ~2100 |
-| `js/ui.js` | `UI` | DOM-based panels, modals, tech tree, city panel, diplomacy, notifications | ~1670 |
-| `js/ai.js` | `AI` | Computer player decision-making (city mgmt, military, diplomacy, research) | ~510 |
+| `js/data.js` | `TERRAINS`, `RESOURCES`, `TECHS`, `BUILDINGS`, `WONDERS`, `UNITS`, `CITY_STATES`, etc. | All game content as const arrays/objects | ~1060 |
+| `js/engine.js` | `Game` | Core game state, turn processing, combat, city management, city-states, all 16 game systems | ~2570 |
+| `js/renderer.js` | `Renderer` | PixiJS rendering, camera, minimap, city-state markers, click handling, animations | ~2230 |
+| `js/ui.js` | `UI` | DOM-based panels, modals, tech tree, city panel, city-state panel, diplomacy, video/TTS | ~2340 |
+| `js/ai.js` | `AI` | Computer player decision-making (city mgmt, military, diplomacy, city-states, research) | ~580 |
 | `js/save.js` | `SaveManager` | localStorage save/load with Set→Array JSON serialization | ~70 |
 | `js/main.js` | (top-level functions) | Entry point, wires UI actions to engine | ~130 |
 | `server.js` | — | Node.js static file server + proxy to Phi LLM sidecar | ~70 |
@@ -140,11 +140,13 @@ Generation scripts:
 
 ## Known issues / incomplete areas
 
-- Container startup sometimes shows "StartupInterruption" — may need to fall back to zip deploy
-- Game has limited real-browser testing; most validation was headless via Node.js VM
+- BitNet sidecar has been **removed** from production (was crashing and blocking app startup). The main app runs without it; AI diplomacy uses fallback responses.
 - AI plays conservatively and may not use all 16 game systems effectively
-- ~75% of the original design doc content is implemented; religion/faith and minor factions have been deliberately removed from scope
-- BitNet sidecar narration is ~36s per request — game UX may need async/non-blocking narration
+- ~80% of the original design doc content is implemented; religion/faith has been deliberately removed from scope
+- City-states (minor factions) are now implemented with influence/envoy system, 5 types (militaristic, cultural, scientific, trade, religious), AI interaction
+- Video playback uses muted autoplay with unmute attempt (browser autoplay policy workaround)
+- TTS/narration falls back to browser `speechSynthesis` when `OPENAI_API_KEY` is not set
+- 95 Playwright tests cover all major game systems (civics, city-states, combat, trade, etc.)
 
 ## Session Recovery — READ THIS FIRST
 
