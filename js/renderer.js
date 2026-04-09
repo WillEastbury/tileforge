@@ -1461,6 +1461,17 @@ const Renderer = {
       }
     }
 
+    // Select city-state
+    const clickedCS = Game.findCityStateAt(row, col);
+    if (clickedCS) {
+      Game.selectedUnit = null;
+      Game.selectedCity = null;
+      Game.movementRange = null;
+      UI.showCityStatePanel(clickedCS);
+      this.render();
+      return;
+    }
+
     // Deselect and show tile info
     Game.selectedUnit = null;
     Game.selectedCity = null;
@@ -1715,6 +1726,54 @@ const Renderer = {
               hpBar.endFill();
               this.cityLayer.addChild(hpBar);
             }
+          }
+        }
+
+        // City-State
+        const cityState = Game.findCityStateAt(r, c);
+        if (cityState) {
+          const csType = CITY_STATE_TYPES[cityState.type];
+          const csColor = parseInt(csType.color.replace('#',''), 16);
+          const csGfx = new PIXI.Graphics();
+          // Diamond shape
+          csGfx.beginFill(csColor, 0.7);
+          csGfx.moveTo(px + tileW/2, py + 3);
+          csGfx.lineTo(px + tileW - 3, py + ts/2);
+          csGfx.lineTo(px + tileW/2, py + ts - 3);
+          csGfx.lineTo(px + 3, py + ts/2);
+          csGfx.closePath();
+          csGfx.endFill();
+          csGfx.lineStyle(2, csColor);
+          csGfx.moveTo(px + tileW/2, py + 3);
+          csGfx.lineTo(px + tileW - 3, py + ts/2);
+          csGfx.lineTo(px + tileW/2, py + ts - 3);
+          csGfx.lineTo(px + 3, py + ts/2);
+          csGfx.closePath();
+          this.cityLayer.addChild(csGfx);
+          // Type icon
+          const csIcon = new PIXI.Text(csType.icon, {fontSize: 11, fill: 0xFFFFFF});
+          csIcon.anchor.set(0.5);
+          csIcon.position.set(px + tileW/2, py + ts/2);
+          this.cityLayer.addChild(csIcon);
+          // Name label above
+          const csName = new PIXI.Text(cityState.name, {
+            fontSize: 8, fill: 0xFFFFFF, fontWeight: 'bold',
+            stroke: 0x000000, strokeThickness: 2
+          });
+          csName.anchor.set(0.5, 1);
+          csName.position.set(px + tileW/2, py - 1);
+          this.cityLayer.addChild(csName);
+          // HP bar if damaged
+          if (cityState.hp < cityState.maxHp) {
+            const hpPct = cityState.hp / cityState.maxHp;
+            const hpBar = new PIXI.Graphics();
+            hpBar.beginFill(0x333333);
+            hpBar.drawRect(px + 2, py + ts - 4, tileW - 5, 3);
+            hpBar.endFill();
+            hpBar.beginFill(hpPct > 0.5 ? 0x4caf50 : hpPct > 0.25 ? 0xff9800 : 0xe94560);
+            hpBar.drawRect(px + 2, py + ts - 4, (tileW - 5) * hpPct, 3);
+            hpBar.endFill();
+            this.cityLayer.addChild(hpBar);
           }
         }
 
@@ -2149,6 +2208,21 @@ const Renderer = {
           Math.floor(r * scaleY),
           Math.max(1, Math.ceil(scaleX)),
           Math.max(1, Math.ceil(scaleY))
+        );
+      }
+    }
+
+    // City-state dots on minimap
+    if (Game.state.cityStates) {
+      for (const cs of Game.state.cityStates) {
+        if (!cs.alive) continue;
+        const csType = CITY_STATE_TYPES[cs.type];
+        ctx.fillStyle = csType.color;
+        ctx.fillRect(
+          Math.floor(cs.c * scaleX) - 1,
+          Math.floor(cs.r * scaleY) - 1,
+          Math.max(2, Math.ceil(scaleX) + 1),
+          Math.max(2, Math.ceil(scaleY) + 1)
         );
       }
     }

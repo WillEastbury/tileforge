@@ -1029,3 +1029,31 @@ const POLITICAL_AFFILIATIONS = {
   authoritarian: {name:'Authoritarian', icon:'🏴', desc:'Total control, maximum efficiency, no dissent', allies:['militarist'], rivals:['liberal','cultural','populist']},
   populist:      {name:'Populist',      icon:'✊', desc:'Champions the common people against elites', allies:['theocrat'], rivals:['technocrat','authoritarian','traditionalist']}
 };
+
+// ========== CITY-STATES (Minor Factions) ==========
+
+const CITY_STATES = [
+  // Militaristic — provide combat bonuses and free units
+  {id:'sparta', name:'Sparta', type:'militaristic', bonus:{combat:0.10}, desc:'The warrior city-state grants combat bonuses to allies.'},
+  {id:'zulu_kraal', name:'Zulu Kraal', type:'militaristic', bonus:{combat:0.05, prod:0.05}, desc:'Fierce warriors of the southern plains.'},
+  // Scientific — provide science bonuses
+  {id:'alexandria', name:'Alexandria', type:'scientific', bonus:{sci:0.10}, desc:'The great library city shares knowledge with its friends.'},
+  {id:'babylon_cs', name:'Babylon', type:'scientific', bonus:{sci:0.05, gold:0.05}, desc:'Ancient center of mathematics and astronomy.'},
+  // Cultural — provide culture and happiness
+  {id:'florence', name:'Florence', type:'cultural', bonus:{cul:0.10}, desc:'A beacon of art and culture.'},
+  {id:'kyoto_cs', name:'Kyoto', type:'cultural', bonus:{cul:0.05, hap:1}, desc:'Tranquil gardens and ancient temples.'},
+  // Trade — provide gold bonuses
+  {id:'venice_cs', name:'Venice', type:'trade', bonus:{gold:0.15}, desc:'Master merchants of the seas.'},
+  {id:'zanzibar', name:'Zanzibar', type:'trade', bonus:{gold:0.10}, desc:'Crossroads of maritime trade routes.'},
+  // Religious — provide culture and faith bonuses
+  {id:'jerusalem_cs', name:'Jerusalem', type:'religious', bonus:{cul:0.05, hap:1}, desc:'Holy city of three faiths.'},
+  {id:'varanasi', name:'Varanasi', type:'religious', bonus:{cul:0.10}, desc:'Ancient spiritual center on the sacred river.'},
+];
+
+const CITY_STATE_TYPES = {
+  militaristic: {icon:'⚔️', color:'#f44336', label:'Militaristic'},
+  scientific:   {icon:'🔬', color:'#2196f3', label:'Scientific'},
+  cultural:     {icon:'🎭', color:'#9c27b0', label:'Cultural'},
+  trade:        {icon:'💰', color:'#ff9800', label:'Trade'},
+  religious:    {icon:'⛪', color:'#ffeb3b', label:'Religious'},
+};

@@ -64,7 +64,8 @@ const Game = {
       winner: null,
       marsShuttles: {}, // playerId -> count
       eraHistory: [{turn: 0, era: 'caveman'}], // track era transitions for year calc
-      goldenAge: {} // playerId -> {turnsLeft}
+      goldenAge: {}, // playerId -> {turnsLeft}
+      cityStates: [] // minor factions on the map
     };
 
     // Build map
@@ -104,6 +105,7 @@ const Game = {
     }
 
     this.updateFogOfWar();
+    this.spawnCityStates();
     return this.state;
   },
 
@@ -1093,6 +1095,147 @@ const Game = {
     if (tile && tile.unit && tile.unit.id === unit.id) tile.unit = null;
   },
 
+  // ========== CITY-STATES (Minor Factions) ==========
+
+  spawnCityStates() {
+    const count = Math.min(CITY_STATES.length, this.state.config.aiCount + 1);
+    const shuffled = [...CITY_STATES].sort(() => Math.random() - 0.5);
+    const selected = shuffled.slice(0, count);
+    const allCityPositions = [];
+    for (const p of this.state.players) {
+      for (const city of p.cities) allCityPositions.push({r: city.r, c: city.c});
+    }
+
+    for (const csData of selected) {
+      let bestTile = null;
+      let bestDist = 0;
+      for (let r = Math.floor(this.state.mapHeight * 0.1); r < Math.floor(this.state.mapHeight * 0.9); r++) {
+        for (let c = 0; c < this.rowWidths[r]; c++) {
+          const tile = this.mapData[r][c];
+          const t = TERRAINS[tile.terrain];
+          if (t.water || t.mv >= 99) continue;
+          let minDist = Infinity;
+          for (const pos of allCityPositions) {
+            const d = this.tileDist(r, c, pos.r, pos.c);
+            if (d < minDist) minDist = d;
+          }
+          if (minDist >= 6 && minDist > bestDist) {
+            bestDist = minDist;
+            bestTile = {r, c};
+          }
+        }
+      }
+      if (bestTile) {
+        allCityPositions.push(bestTile);
+        this.state.cityStates.push({
+          id: csData.id,
+          name: csData.name,
+          type: csData.type,
+          bonus: csData.bonus,
+          desc: csData.desc,
+          r: bestTile.r,
+          c: bestTile.c,
+          influence: {},
+          defense: 15,
+          hp: 100,
+          maxHp: 100,
+          alive: true
+        });
+      }
+    }
+  },
+
+  findCityState(id) {
+    if (!this.state || !this.state.cityStates) return null;
+    for (const cs of this.state.cityStates) {
+      if (cs.id === id) return cs;
+    }
+    return null;
+  },
+
+  findCityStateAt(r, c) {
+    if (!this.state || !this.state.cityStates) return null;
+    for (const cs of this.state.cityStates) {
+      if (cs.alive && cs.r === r && cs.c === c) return cs;
+    }
+    return null;
+  },
+
+  sendEnvoy(playerId, cityStateId) {
+    const p = this.state.players[playerId];
+    const cs = this.findCityState(cityStateId);
+    if (!p || !cs || !cs.alive) return false;
+    if (p.gold < 50) return false;
+    p.gold -= 50;
+    if (!cs.influence[playerId]) cs.influence[playerId] = 0;
+    cs.influence[playerId] = Math.min(100, cs.influence[playerId] + 10);
+    if (playerId === 0) {
+      const status = this.getCityStateStatus(playerId, cityStateId);
+      UI.notify('Envoy sent to ' + cs.name + '! (' + status + ')');
+    }
+    return true;
+  },
+
+  getCityStateStatus(playerId, cityStateId) {
+    const cs = this.findCityState(cityStateId);
+    if (!cs) return 'neutral';
+    const inf = cs.influence[playerId] || 0;
+    if (inf >= 60) return 'ally';
+    if (inf >= 30) return 'friend';
+    return 'neutral';
+  },
+
+  applyCityStateBonuses(playerId, totals) {
+    if (!this.state.cityStates) return;
+    for (const cs of this.state.cityStates) {
+      if (!cs.alive) continue;
+      const inf = cs.influence[playerId] || 0;
+      if (inf < 30) continue;
+      const mult = inf >= 60 ? 1.0 : 0.5;
+      const b = cs.bonus;
+      if (b.gold) totals.gold = Math.floor(totals.gold * (1 + b.gold * mult));
+      if (b.sci) totals.sci = Math.floor(totals.sci * (1 + b.sci * mult));
+      if (b.cul) totals.cul = Math.floor(totals.cul * (1 + b.cul * mult));
+      if (b.prod) totals.prod = Math.floor(totals.prod * (1 + b.prod * mult));
+      if (b.combat) totals.combat = (totals.combat || 0) + b.combat * mult;
+      if (b.hap) {
+        const p = this.state.players[playerId];
+        for (const city of p.cities) city.happiness += Math.floor(b.hap * mult);
+      }
+    }
+  },
+
+  attackCityState(unit, cityStateId) {
+    const cs = this.findCityState(cityStateId);
+    if (!cs || !cs.alive) return null;
+    const uType = this.getUnitType(unit);
+    const promos = this.getPromotionBonuses(unit);
+    const attackStr = (uType.str + promos.strBonus) * (unit.hp / 100);
+    const defStr = cs.defense * (cs.hp / cs.maxHp);
+    const damage = Math.max(5, Math.floor(attackStr * 30 / (defStr + 10)));
+    const counterDmg = Math.max(2, Math.floor(defStr * 15 / (attackStr + 5)));
+    cs.hp -= damage;
+    unit.hp -= counterDmg;
+    unit.hasActed = true;
+    unit.movementLeft = 0;
+    if (cs.hp <= 0) {
+      cs.alive = false;
+      const p = this.state.players[unit.owner];
+      p.gold += 200;
+      // Penalty: all surviving city-states lose influence with this player
+      for (const other of this.state.cityStates) {
+        if (other.alive) other.influence[unit.owner] = -20;
+      }
+      if (unit.owner === 0) UI.notify('💀 ' + cs.name + ' conquered! +200 gold. Other city-states are wary of you.');
+      return {result: 'conquered', gold: 200};
+    }
+    if (unit.hp <= 0) {
+      this.killUnit(unit);
+      return {result: 'unit_destroyed'};
+    }
+    return {result: 'ongoing', csDamage: damage, unitDamage: counterDmg};
+  },
+
   findCityById(id) {
     for (const p of this.state.players) {
       for (const c of p.cities) {
@@ -1220,6 +1363,12 @@ const Game = {
       const pen = govData.penalty;
       if (pen && pen.hap) for (const city of p.cities) city.happiness += pen.hap;
     }
+    // City-state bonuses (friend = 50%, ally = 100%)
+    const csTotals = {gold: totalGold, sci: totalSci, cul: totalCul};
+    this.applyCityStateBonuses(playerId, csTotals);
+    totalGold = csTotals.gold;
+    totalSci = csTotals.sci;
+    totalCul = csTotals.cul;
     // Anarchy: halve all yields
     if (p.anarchyTurns > 0) {
       totalGold = Math.floor(totalGold * 0.5);
@@ -2413,6 +2562,7 @@ const Game = {
     }
     if (!this.state.eraHistory) this.state.eraHistory = [{turn: 0, era: 'caveman'}];
     if (!this.state.goldenAge) this.state.goldenAge = {};
+    if (!this.state.cityStates) this.state.cityStates = [];
     this.rowWidths = data.rowWidths;
 
     // Rebuild map

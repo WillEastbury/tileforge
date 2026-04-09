@@ -17,6 +17,9 @@ const AI = {
     // Trade route management
     this.manageTradeRoutes(playerId, p);
 
+    // City-state interactions
+    this.manageCityStates(playerId, p);
+
     // Unit management
     for (const unit of [...p.units]) {
       if (!p.units.includes(unit)) continue; // May have been killed
@@ -68,6 +71,55 @@ const AI = {
           }
         }
         if (player.tradeRoutes.length >= Game.getMaxTradeRoutes(player)) break;
+      }
+    }
+  },
+
+  manageCityStates(playerId, player) {
+    if (!Game.state.cityStates || Game.state.cityStates.length === 0) return;
+    if (player.gold < 200) return;
+
+    // Determine preferred city-state type based on leader style
+    const militaryStr = player.units.filter(u => Game.getUnitType(u).str > 0).length;
+    const isAggressive = militaryStr > player.cities.length * 3;
+
+    // If aggressive, consider attacking nearby city-states
+    if (isAggressive && player.gold > 300) {
+      for (const cs of Game.state.cityStates) {
+        if (!cs.alive) continue;
+        // Check if we have a military unit adjacent
+        const neighbors = Game.getNeighbors(cs.r, cs.c);
+        for (const n of neighbors) {
+          const tile = Game.getTile(n.r, n.c);
+          if (tile && tile.unit && tile.unit.owner === playerId && !tile.unit.hasActed) {
+            const uType = Game.getUnitType(tile.unit);
+            if (uType.str >= 8) {
+              Game.attackCityState(tile.unit, cs.id);
+              return;
+            }
+          }
+        }
+      }
+    }
+
+    // Peaceful: send envoys to preferred city-state types
+    const preferredTypes = [];
+    const sciTotal = player.totalScience || 0;
+    const culTotal = player.totalCulture || 0;
+    if (sciTotal > culTotal) preferredTypes.push('scientific', 'trade');
+    else preferredTypes.push('cultural', 'religious');
+    preferredTypes.push('militaristic');
+
+    for (const cs of Game.state.cityStates) {
+      if (!cs.alive) continue;
+      const inf = cs.influence[playerId] || 0;
+      if (inf >= 60) continue; // already ally
+      if (player.gold < 100) break;
+      // Prefer matching types
+      const isPreferred = preferredTypes.indexOf(cs.type) < 2;
+      if (isPreferred || inf >= 20) {
+        Game.sendEnvoy(playerId, cs.id);
+        if (player.gold < 100) break;
       }
     }
   },

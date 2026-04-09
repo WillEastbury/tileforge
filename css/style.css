@@ -457,6 +457,14 @@ html, body { height: 100%; overflow: hidden; font-family: 'Segoe UI', system-ui,
 
 /* Diplomacy Panel */
 #diplomacy-panel { top: 50px; left: 50%; transform: translateX(-50%); width: 550px; max-width: 95vw; max-height: calc(100vh - 110px); overflow-y: auto; }
+
+/* City-State Panel */
+#citystate-panel { top: 50px; left: 50%; transform: translateX(-50%); width: 450px; max-width: 95vw; max-height: calc(100vh - 110px); overflow-y: auto; }
+.cs-influence-bar { height: 12px; background: #333; border-radius: 6px; overflow: hidden; margin: 8px 0; }
+.cs-influence-fill { height: 100%; border-radius: 6px; transition: width 0.3s; }
+.cs-status-neutral { color: #888; }
+.cs-status-friend { color: #4caf50; }
+.cs-status-ally { color: #ffc107; }
 .diplo-row { display: flex; align-items: center; gap: 10px; padding: 10px; margin-bottom: 4px; background: linear-gradient(to bottom, rgba(26,26,46,0.9), var(--bg-dark)); border: 1px solid var(--border); border-left: 3px solid var(--accent2); border-radius: 4px; font-size: 13px; transition: all 0.15s; }
 .diplo-row:hover { transform: translateY(-1px); box-shadow: 0 2px 6px rgba(0,0,0,0.2); }
 .diplo-color-swatch { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.2); }

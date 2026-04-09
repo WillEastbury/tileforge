@@ -1440,6 +1440,108 @@ const UI = {
     document.getElementById('diplomacy-panel').classList.add('hidden');
   },
 
+  // ========== CITY-STATE PANEL ==========
+
+  showCityStatePanel(cs) {
+    const panel = document.getElementById('citystate-panel');
+    panel.classList.remove('hidden');
+    this.renderCityStateDetail(cs);
+  },
+
+  closeCityStatePanel() {
+    document.getElementById('citystate-panel').classList.add('hidden');
+  },
+
+  renderCityStateDetail(cs) {
+    const container = document.getElementById('citystate-detail');
+    if (!cs || !cs.alive) {
+      container.innerHTML = '<p style="color:var(--text-dim)">This city-state has been conquered.</p>';
+      return;
+    }
+    const csType = CITY_STATE_TYPES[cs.type];
+    const inf = cs.influence[0] || 0;
+    const status = Game.getCityStateStatus(0, cs.id);
+    const statusClass = 'cs-status-' + status;
+    const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
+    const player = Game.state.players[0];
+    const canAfford = player.gold >= 50;
+
+    let bonusHtml = '';
+    const b = cs.bonus;
+    if (b.gold) bonusHtml += '<span>💰 Gold +' + Math.round(b.gold * 100) + '%</span> ';
+    if (b.sci) bonusHtml += '<span>🔬 Science +' + Math.round(b.sci * 100) + '%</span> ';
+    if (b.cul) bonusHtml += '<span>🎭 Culture +' + Math.round(b.cul * 100) + '%</span> ';
+    if (b.prod) bonusHtml += '<span>⚙️ Production +' + Math.round(b.prod * 100) + '%</span> ';
+    if (b.combat) bonusHtml += '<span>⚔️ Combat +' + Math.round(b.combat * 100) + '%</span> ';
+    if (b.hap) bonusHtml += '<span>😊 Happiness +' + b.hap + '</span> ';
+
+    const friendPct = Math.min(inf, 30) / 30 * 100;
+    const allyPct = inf >= 30 ? Math.min(inf - 30, 30) / 30 * 100 : 0;
+
+    let html = '<div style="text-align:center;margin-bottom:12px;">';
+    html += '<h3 style="margin:0">' + csType.icon + ' ' + cs.name + '</h3>';
+    html += '<span style="color:' + csType.color + ';font-size:13px;font-weight:600">' + csType.label + ' City-State</span>';
+    html += '</div>';
+    html += '<p style="font-size:12px;color:var(--text-dim);margin:6px 0">' + cs.desc + '</p>';
+    html += '<div style="margin:10px 0">';
+    html += '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px">';
+    html += '<span>Influence: <b>' + inf + '</b>/100</span>';
+    html += '<span class="' + statusClass + '" style="font-weight:700">' + statusLabel + '</span>';
+    html += '</div>';
+    html += '<div class="cs-influence-bar">';
+    html += '<div class="cs-influence-fill" style="width:' + inf + '%;background:linear-gradient(90deg, #888 0%, #4caf50 30%, #ffc107 60%, #ffc107 100%)"></div>';
+    html += '</div>';
+    html += '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-dim)">';
+    html += '<span>Neutral</span><span>Friend (30)</span><span>Ally (60)</span>';
+    html += '</div>';
+    html += '</div>';
+    html += '<div style="margin:10px 0;padding:8px;background:var(--bg-dark);border-radius:4px;border:1px solid var(--border)">';
+    html += '<div style="font-size:11px;color:var(--text-dim);margin-bottom:4px">Ally Bonuses:</div>';
+    html += '<div style="font-size:13px">' + bonusHtml + '</div>';
+    if (status === 'friend') html += '<div style="font-size:10px;color:var(--text-dim);margin-top:4px">Currently receiving 50% bonuses (friend)</div>';
+    if (status === 'ally') html += '<div style="font-size:10px;color:var(--green);margin-top:4px">Receiving full bonuses (ally)</div>';
+    html += '</div>';
+    html += '<div style="display:flex;gap:8px;margin-top:12px">';
+    html += '<button class="btn btn-secondary" style="flex:1" ' + (canAfford ? '' : 'disabled') + ' onclick="Game.sendEnvoy(0,\'' + cs.id + '\');UI.renderCityStateDetail(Game.findCityState(\'' + cs.id + '\'))">Send Envoy (50💰)</button>';
+    html += '<button class="btn btn-danger" style="flex:1" onclick="UI.confirmAttackCityState(\'' + cs.id + '\')">⚔️ Declare War</button>';
+    html += '</div>';
+    if (!canAfford) html += '<p style="font-size:11px;color:var(--red);margin-top:4px">Not enough gold for envoy</p>';
+    html += '<div style="margin-top:8px;font-size:11px;color:var(--text-dim)">HP: ' + cs.hp + '/' + cs.maxHp + ' | Defense: ' + cs.defense + '</div>';
+    container.innerHTML = html;
+  },
+
+  confirmAttackCityState(csId) {
+    const cs = Game.findCityState(csId);
+    if (!cs) return;
+    if (confirm('Attack ' + cs.name + '? This will anger all city-states!')) {
+      // Find a human unit adjacent to the city-state
+      const neighbors = Game.getNeighbors(cs.r, cs.c);
+      let attacker = null;
+      for (const n of neighbors) {
+        const tile = Game.getTile(n.r, n.c);
+        if (tile && tile.unit && tile.unit.owner === 0 && !tile.unit.hasActed) {
+          const uType = Game.getUnitType(tile.unit);
+          if (uType.str > 0) { attacker = tile.unit; break; }
+        }
+      }
+      if (!attacker) {
+        UI.notify('❌ No available military unit adjacent to ' + cs.name);
+        return;
+      }
+      const result = Game.attackCityState(attacker, csId);
+      if (result) {
+        if (result.result === 'conquered') {
+          this.closeCityStatePanel();
+        } else {
+          this.renderCityStateDetail(cs);
+        }
+      }
+      Renderer.render();
+      Renderer.updateMinimap();
+      UI.updateTopBar();
+    }
+  },
+
   renderDiplomacy() {
     if (!Game.state) return;
     const myPlayer = Game.state.players[0];
