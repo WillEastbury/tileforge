@@ -213,22 +213,22 @@ test.describe('Intro Audio & Video', () => {
     await expect(narrationOverlay).toBeHidden({ timeout: 2000 });
   });
 
-  test('video 5s timeout fires and skips to prologue', async ({ page }) => {
+  test('video timeout fires and skips to prologue', async ({ page }) => {
     await page.goto('/');
     await page.click('text=New Game');
 
     // Intercept the video request to simulate a slow/missing video
     await page.route('**/assets/video/intro.mp4', route => {
       // Don't respond — simulate a stalled load
-      // The 5s timeout in playVideo should fire and skip
+      // The 20s timeout in playVideo should fire and skip
     });
 
     await page.click('text=Start Game');
     await page.waitForFunction(() => typeof Game !== 'undefined' && Game.state && Game.state.turn >= 1, { timeout: 15000 });
 
-    // Video should timeout after 5s and prologue should appear
+    // Video should timeout after 20s and prologue should appear
     const narrativeOverlay = page.locator('#narrative-overlay');
-    await expect(narrativeOverlay).toBeVisible({ timeout: 10000 });
+    await expect(narrativeOverlay).toBeVisible({ timeout: 25000 });
   });
 
   test('playEraMusic sets correct track for caveman era', async ({ page }) => {

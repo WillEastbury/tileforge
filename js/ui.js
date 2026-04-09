@@ -1662,6 +1662,8 @@ const UI = {
           this._narrationAudio = null;
         };
       } catch (e) {}
+    } else {
+      this._browserTTS(text);
     }
   },
 
@@ -1692,10 +1694,10 @@ const UI = {
           style: NARRATION_PROMPTS.narrator_style
         })
       });
-      if (!resp.ok) return null;
+      if (!resp.ok) return { text: null, audio: null };
       return await resp.json();
     } catch (e) {
-      return null;
+      return { text: null, audio: null };
     }
   },
 
@@ -1832,7 +1834,10 @@ const UI = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text })
       });
-      if (!resp.ok) return;
+      if (!resp.ok || !resp.headers.get('content-type')?.includes('audio')) {
+        this._browserTTS(text);
+        return;
+      }
       const blob = await resp.blob();
       const url = URL.createObjectURL(blob);
       if (this._dialogueAudio) { this._dialogueAudio.pause(); }
@@ -1845,7 +1850,22 @@ const UI = {
         if (this.musicPlayer) this.musicPlayer.volume = this.musicVolume;
         this._dialogueAudio = null;
       };
-    } catch (e) {}
+    } catch (e) {
+      this._browserTTS(text);
+    }
+  },
+
+  _browserTTS(text) {
+    if (!window.speechSynthesis) return;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.9;
+    utterance.pitch = 0.8;
+    const voices = speechSynthesis.getVoices();
+    const preferred = voices.find(v => v.lang.startsWith('en') && v.name.toLowerCase().includes('male'))
+      || voices.find(v => v.lang.startsWith('en'))
+      || voices[0];
+    if (preferred) utterance.voice = preferred;
+    speechSynthesis.speak(utterance);
   },
 
   startVoiceChat() {
@@ -2273,20 +2293,20 @@ const UI = {
     const video = document.getElementById('game-video');
     if (!overlay || !video) { if (callback) callback(); return; }
     this._videoCallback = callback;
-    video.src = src;
+    video.preload = 'auto';
     video.playsInline = true;
-    video.muted = false;
+    video.muted = true;  // Start muted to bypass autoplay policy
     overlay.classList.remove('hidden');
-    // Timeout: skip if video doesn't start playing within 5 seconds
-    this._videoLoadTimer = setTimeout(() => { this.skipVideo(); }, 5000);
-    video.oncanplay = () => {
+    video.src = src;
+    video.load();
+    this._videoLoadTimer = setTimeout(() => { this.skipVideo(); }, 20000);
+    video.oncanplaythrough = () => {
       if (this._videoLoadTimer) { clearTimeout(this._videoLoadTimer); this._videoLoadTimer = null; }
+      video.play().then(() => {
+        // Try to unmute after play starts (works if user gesture is still active)
+        try { video.muted = false; } catch(e) {}
+      }).catch(() => { this.skipVideo(); });
     };
-    video.play().catch(() => {
-      // Autoplay blocked — try muted (browsers allow muted autoplay)
-      video.muted = true;
-      video.play().catch(() => { this.skipVideo(); });
-    });
     video.onended = () => { this.skipVideo(); };
     video.onerror = () => { this.skipVideo(); };
   },
@@ -2296,7 +2316,7 @@ const UI = {
     const overlay = document.getElementById('video-overlay');
     const video = document.getElementById('game-video');
     if (overlay) overlay.classList.add('hidden');
-    if (video) { video.pause(); video.src = ''; video.oncanplay = null; }
+    if (video) { video.pause(); video.src = ''; video.oncanplay = null; video.oncanplaythrough = null; }
     if (this._videoCallback) {
       const cb = this._videoCallback;
       this._videoCallback = null;
