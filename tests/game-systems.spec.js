@@ -615,6 +615,54 @@ test.describe('Video & Narration', () => {
     expect(fallbackMuted).toBe(true);
     await page.evaluate(() => UI.skipVideo());
   });
+
+  test('video playback pauses background music and resumes on skip', async ({ page }) => {
+    await startGame(page, { mapSize: 'small', aiCount: '1', difficulty: 0 });
+    // Ensure music is playing
+    const musicBefore = await page.evaluate(() => {
+      if (!UI.musicPlayer) UI.initMusic();
+      UI.musicPlayer.src = 'assets/music/caveman.mp3';
+      UI.musicEnabled = true;
+      return UI.musicPlayer.paused;
+    });
+    // Start a video — should pause music
+    await page.evaluate(() => {
+      UI.playVideo('assets/video/intro.mp4', () => {});
+    });
+    const musicDuringVideo = await page.evaluate(() => UI.musicPlayer.paused);
+    expect(musicDuringVideo).toBe(true);
+    // Skip video — should resume music
+    await page.evaluate(() => {
+      // Spy on play to verify it's called
+      window.__musicResumed = false;
+      const origPlay = UI.musicPlayer.play;
+      UI.musicPlayer.play = function() { window.__musicResumed = true; return Promise.resolve(); };
+      UI.skipVideo();
+      UI.musicPlayer.play = origPlay;
+    });
+    const resumed = await page.evaluate(() => window.__musicResumed);
+    expect(resumed).toBe(true);
+  });
+
+  test('prologue uses browser TTS when server narration is unavailable', async ({ page }) => {
+    await startGame(page, { mapSize: 'small', aiCount: '1', difficulty: 0 });
+    const ttsResult = await page.evaluate(() => {
+      // Clear any prefetched narration to simulate server unavailable
+      UI._prefetchedIntroNarration = null;
+      // Spy on _browserTTS
+      let ttsCalled = false;
+      let ttsText = '';
+      const origTTS = UI._browserTTS;
+      UI._browserTTS = function(text) { ttsCalled = true; ttsText = text; };
+      // Trigger prologue callback (what happens after "Begin Your Journey" click)
+      if (UI._narrativeCallback) UI._narrativeCallback();
+      UI._browserTTS = origTTS;
+      return { ttsCalled, hasText: ttsText.length > 0, includesContent: ttsText.includes('first stone') };
+    });
+    expect(ttsResult.ttsCalled).toBe(true);
+    expect(ttsResult.hasText).toBe(true);
+    expect(ttsResult.includesContent).toBe(true);
+  });
 });
 
 // ============================================================

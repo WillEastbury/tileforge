@@ -2200,11 +2200,14 @@ const UI = {
     btn.textContent = 'Begin Your Journey';
     overlay.classList.remove('hidden');
     this._narrativeCallback = () => {
-      // Music is already playing — no need to restart it
-      // Show intro narration scroll if pre-fetched result is ready
+      // Show intro narration scroll with TTS
       const result = this._prefetchedIntroNarration;
       if (result && result.text) {
         this.showNarrationWithAudio(result.text, "— Apollo's Time", '🔥', result.audio);
+      } else {
+        // Server narration unavailable — use browser TTS with prologue text
+        this.showNarrationOverlay(NARRATIVE.prologue, "— Apollo's Time", '🔥');
+        this._browserTTS(NARRATIVE.prologue);
       }
     };
   },
@@ -2398,13 +2401,17 @@ const UI = {
     if (!overlay || !video) { if (callback) callback(); return; }
     this._videoCallback = callback;
     this._videoPrepared = true;
+    // Mute background music while video plays
+    if (this.musicPlayer && !this.musicPlayer.paused) {
+      this._musicWasPlaying = true;
+      this.musicPlayer.pause();
+    }
     video.preload = 'auto';
     video.playsInline = true;
     video.muted = false;
     overlay.classList.remove('hidden');
     video.src = src;
     video.load();
-    // Kick off play() immediately in the gesture context — it buffers automatically
     this._videoPlayPromise = video.play().catch(() => {
       video.muted = true;
       return video.play();
@@ -2425,6 +2432,11 @@ const UI = {
     const video = document.getElementById('game-video');
     if (!overlay || !video) { if (callback) callback(); return; }
     this._videoCallback = callback;
+    // Mute background music while video plays
+    if (this.musicPlayer && !this.musicPlayer.paused) {
+      this._musicWasPlaying = true;
+      this.musicPlayer.pause();
+    }
     video.preload = 'auto';
     video.playsInline = true;
     video.muted = false;
@@ -2449,6 +2461,11 @@ const UI = {
     const video = document.getElementById('game-video');
     if (overlay) overlay.classList.add('hidden');
     if (video) { video.pause(); video.src = ''; video.oncanplay = null; video.oncanplaythrough = null; }
+    // Resume background music if it was playing before video
+    if (this._musicWasPlaying && this.musicPlayer && this.musicEnabled) {
+      this._musicWasPlaying = false;
+      this.musicPlayer.play().catch(() => {});
+    }
     if (this._videoCallback) {
       const cb = this._videoCallback;
       this._videoCallback = null;
