@@ -433,14 +433,14 @@ test.describe('Video & Narration', () => {
     await expect(page.locator('#video-skip')).toBeAttached();
   });
 
-  test('playVideo shows overlay and skipVideo hides it', async ({ page }) => {
+  test('playVideo shows overlay and sets video src', async ({ page }) => {
     await startGame(page, { mapSize: 'small', aiCount: '1', difficulty: 0 });
-    // Manually trigger video playback
     await page.evaluate(() => {
       UI.playVideo('assets/video/intro.mp4', () => {});
     });
     await expect(page.locator('#video-overlay')).not.toHaveClass(/hidden/, { timeout: 2000 });
-    // Skip it
+    const src = await page.evaluate(() => document.getElementById('game-video').src);
+    expect(src).toContain('intro.mp4');
     await page.evaluate(() => UI.skipVideo());
     await expect(page.locator('#video-overlay')).toHaveClass(/hidden/, { timeout: 2000 });
   });
@@ -482,16 +482,137 @@ test.describe('Video & Narration', () => {
     await expect(page.locator('#narration-overlay')).not.toHaveClass(/hidden/);
   });
 
-  test('video starts muted for autoplay compatibility', async ({ page }) => {
+  test('video play() is called synchronously within user gesture on Start Game', async ({ page }) => {
+    // This is the critical test: verify that video.play() is invoked during
+    // the Start Game click handler (user gesture), not in a deferred setTimeout
+    await page.addInitScript(() => { window.__FORCE_CANVAS = true; });
+    await page.goto('/');
+    // Intercept video.play() to record WHEN it's called relative to the click
+    await page.evaluate(() => {
+      window.__videoPlayCalls = [];
+      const origPlay = HTMLVideoElement.prototype.play;
+      HTMLVideoElement.prototype.play = function() {
+        window.__videoPlayCalls.push({
+          time: performance.now(),
+          src: this.src,
+          muted: this.muted
+        });
+        // Return resolved promise (Playwright doesn't have real video decode)
+        return Promise.resolve();
+      };
+    });
+    // Click Start Game and record the click time
+    await page.evaluate(() => { window.__clickTime = 0; });
+    await page.evaluate(() => {
+      const btn = document.querySelector('button[onclick="startNewGame()"]');
+      window.__clickTime = performance.now();
+      btn.click();
+    });
+    // Check that play() was called within 10ms of the click (synchronous gesture)
+    await page.waitForTimeout(200);
+    const result = await page.evaluate(() => {
+      return {
+        clickTime: window.__clickTime,
+        playCalls: window.__videoPlayCalls
+      };
+    });
+    expect(result.playCalls.length).toBeGreaterThan(0);
+    const firstPlay = result.playCalls.find(c => c.src.includes('intro'));
+    // play() should be called synchronously — within gesture window
+    if (firstPlay) {
+      const delay = firstPlay.time - result.clickTime;
+      // Must be < 50ms (before the setTimeout fires)
+      expect(delay).toBeLessThan(50);
+      // Should attempt unmuted first
+      expect(firstPlay.muted).toBe(false);
+    }
+    await page.evaluate(() => UI.skipVideo());
+  });
+
+  test('prepareVideo starts play in gesture context, playIntroVideo wires callback', async ({ page }) => {
+    await page.addInitScript(() => { window.__FORCE_CANVAS = true; });
+    await page.goto('/');
+    // Spy on video.play
+    await page.evaluate(() => {
+      window.__playCount = 0;
+      const origPlay = HTMLVideoElement.prototype.play;
+      HTMLVideoElement.prototype.play = function() {
+        window.__playCount++;
+        return Promise.resolve();
+      };
+    });
+    // Simulate the startNewGame flow: prepareVideo then playIntroVideo
+    await page.evaluate(() => {
+      let callbackFired = false;
+      UI.initMusic();
+      UI.unlockAudio();
+      // This is what startNewGame does synchronously
+      UI.prepareVideo('assets/video/intro.mp4', () => { callbackFired = true; });
+      window.__afterPrepare = window.__playCount;
+      // This is called later from setTimeout — should just wire up callback
+      UI.playIntroVideo(() => { window.__callbackWired = true; });
+      window.__afterPlayIntro = window.__playCount;
+    });
+    const counts = await page.evaluate(() => ({
+      afterPrepare: window.__afterPrepare,
+      afterPlayIntro: window.__afterPlayIntro
+    }));
+    // play() should have been called during prepareVideo (gesture context)
+    expect(counts.afterPrepare).toBeGreaterThanOrEqual(1);
+    // playIntroVideo should NOT call play() again (it just wires the callback)
+    expect(counts.afterPlayIntro).toBe(counts.afterPrepare);
+    await page.evaluate(() => UI.skipVideo());
+  });
+
+  test('browser TTS fallback triggers speechSynthesis', async ({ page }) => {
     await startGame(page, { mapSize: 'small', aiCount: '1', difficulty: 0 });
+    const ttsResult = await page.evaluate(() => {
+      // Check if _browserTTS exists and speechSynthesis is available
+      const hasBrowserTTS = typeof UI._browserTTS === 'function';
+      const hasSpeechSynth = 'speechSynthesis' in window;
+      // Spy on speechSynthesis.speak
+      let speakCalled = false;
+      if (hasSpeechSynth) {
+        const origSpeak = window.speechSynthesis.speak;
+        window.speechSynthesis.speak = function(utterance) {
+          speakCalled = true;
+          // Don't actually speak in test
+        };
+        try {
+          UI._browserTTS('Test narration text');
+        } catch(e) {}
+        window.speechSynthesis.speak = origSpeak;
+      }
+      return { hasBrowserTTS, hasSpeechSynth, speakCalled };
+    });
+    expect(ttsResult.hasBrowserTTS).toBe(true);
+    expect(ttsResult.hasSpeechSynth).toBe(true);
+    expect(ttsResult.speakCalled).toBe(true);
+  });
+
+  test('video attempts unmuted playback, falls back to muted', async ({ page }) => {
+    await page.addInitScript(() => { window.__FORCE_CANVAS = true; });
+    await page.goto('/');
+    // Make first play() reject (simulating autoplay block), second succeed
+    await page.evaluate(() => {
+      let callCount = 0;
+      HTMLVideoElement.prototype.play = function() {
+        callCount++;
+        if (callCount === 1) {
+          return Promise.reject(new DOMException('NotAllowedError'));
+        }
+        window.__fallbackMuted = this.muted;
+        return Promise.resolve();
+      };
+    });
     await page.evaluate(() => {
       UI.playVideo('assets/video/intro.mp4', () => {});
     });
-    const muted = await page.evaluate(() => {
-      const vid = document.getElementById('game-video');
-      return vid ? vid.muted : null;
-    });
-    expect(muted).toBe(true);
+    // Wait for the promise chain to resolve
+    await page.waitForTimeout(200);
+    const fallbackMuted = await page.evaluate(() => window.__fallbackMuted);
+    // On fallback, video should be muted
+    expect(fallbackMuted).toBe(true);
     await page.evaluate(() => UI.skipVideo());
   });
 });

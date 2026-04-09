@@ -23,6 +23,12 @@ function startNewGame() {
   // Start music right away during loading
   UI.playEraMusic('caveman');
 
+  // Prepare intro video NOW — synchronous in click handler preserves user gesture
+  // so the browser allows play() with sound. The actual callback wires up later.
+  UI.prepareVideo('assets/video/intro.mp4', function() {
+    UI.showPrologue();
+  });
+
   // Pre-fetch intro narration in parallel with everything else
   UI._prefetchedIntroNarration = null;
   if (typeof NARRATION_PROMPTS !== 'undefined' && NARRATION_PROMPTS.intro) {
@@ -70,7 +76,7 @@ function startNewGame() {
       setTimeout(() => { loadingEl.style.display = 'none'; }, 500);
     }
 
-    // Play intro video with 5s load timeout, then show prologue
+    // Video was already prepared synchronously — just wire up the callback
     UI.playIntroVideo(function() {
       UI.showPrologue();
     });

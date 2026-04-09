@@ -2390,14 +2390,44 @@ const UI = {
     }
   },
 
+    // Prepare a video element synchronously during a user gesture so play() is allowed.
+  // Call this inside the click handler BEFORE any setTimeout.
+  prepareVideo(src, callback) {
+    const overlay = document.getElementById('video-overlay');
+    const video = document.getElementById('game-video');
+    if (!overlay || !video) { if (callback) callback(); return; }
+    this._videoCallback = callback;
+    this._videoPrepared = true;
+    video.preload = 'auto';
+    video.playsInline = true;
+    video.muted = false;
+    overlay.classList.remove('hidden');
+    video.src = src;
+    video.load();
+    // Kick off play() immediately in the gesture context — it buffers automatically
+    this._videoPlayPromise = video.play().catch(() => {
+      video.muted = true;
+      return video.play();
+    }).catch(() => {});
+    video.onended = () => { this.skipVideo(); };
+    video.onerror = () => { this.skipVideo(); };
+    this._videoLoadTimer = setTimeout(() => { this.skipVideo(); }, 20000);
+  },
+
   playVideo(src, callback) {
+    // If already prepared via prepareVideo, just wire up the callback
+    if (this._videoPrepared) {
+      this._videoPrepared = false;
+      this._videoCallback = callback;
+      return;
+    }
     const overlay = document.getElementById('video-overlay');
     const video = document.getElementById('game-video');
     if (!overlay || !video) { if (callback) callback(); return; }
     this._videoCallback = callback;
     video.preload = 'auto';
     video.playsInline = true;
-    video.muted = false;  // Play with sound — user gesture from Start Game click
+    video.muted = false;
     overlay.classList.remove('hidden');
     video.src = src;
     video.load();
@@ -2405,7 +2435,6 @@ const UI = {
     video.oncanplaythrough = () => {
       if (this._videoLoadTimer) { clearTimeout(this._videoLoadTimer); this._videoLoadTimer = null; }
       video.play().catch(() => {
-        // Autoplay with sound blocked — retry muted
         video.muted = true;
         return video.play();
       }).catch(() => { this.skipVideo(); });
