@@ -2397,16 +2397,17 @@ const UI = {
     this._videoCallback = callback;
     video.preload = 'auto';
     video.playsInline = true;
-    video.muted = true;  // Start muted to bypass autoplay policy
+    video.muted = false;  // Play with sound — user gesture from Start Game click
     overlay.classList.remove('hidden');
     video.src = src;
     video.load();
     this._videoLoadTimer = setTimeout(() => { this.skipVideo(); }, 20000);
     video.oncanplaythrough = () => {
       if (this._videoLoadTimer) { clearTimeout(this._videoLoadTimer); this._videoLoadTimer = null; }
-      video.play().then(() => {
-        // Try to unmute after play starts (works if user gesture is still active)
-        try { video.muted = false; } catch(e) {}
+      video.play().catch(() => {
+        // Autoplay with sound blocked — retry muted
+        video.muted = true;
+        return video.play();
       }).catch(() => { this.skipVideo(); });
     };
     video.onended = () => { this.skipVideo(); };
