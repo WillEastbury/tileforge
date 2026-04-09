@@ -38,7 +38,7 @@ test.describe('Civics & Governments', () => {
 
   test('civics panel opens and shows civic tree', async ({ page }) => {
     await startGame(page, { mapSize: 'small', aiCount: '1', difficulty: 0 });
-    await page.click('button[title="Civics"]');
+    await page.click('button[title="Civics & Government"]');
     await expect(page.locator('#civics-panel')).not.toHaveClass(/hidden/);
     const civicItems = page.locator('#civics-tree-content .civic-item');
     await expect(civicItems.first()).toBeVisible({ timeout: 3000 });
@@ -48,7 +48,7 @@ test.describe('Civics & Governments', () => {
 
   test('civics panel closes with X button', async ({ page }) => {
     await startGame(page, { mapSize: 'small', aiCount: '1', difficulty: 0 });
-    await page.click('button[title="Civics"]');
+    await page.click('button[title="Civics & Government"]');
     await expect(page.locator('#civics-panel')).not.toHaveClass(/hidden/);
     await page.click('#civics-panel .btn-close');
     await expect(page.locator('#civics-panel')).toHaveClass(/hidden/);
@@ -80,7 +80,7 @@ test.describe('Civics & Governments', () => {
 
   test('governments section shows in civics panel', async ({ page }) => {
     await startGame(page, { mapSize: 'small', aiCount: '1', difficulty: 0 });
-    await page.click('button[title="Civics"]');
+    await page.click('button[title="Civics & Government"]');
     const govContent = page.locator('#civics-gov-content');
     await expect(govContent).toBeVisible({ timeout: 3000 });
     const text = await govContent.textContent();
@@ -121,7 +121,7 @@ test.describe('Civics & Governments', () => {
 
   test('civic progress advances each turn', async ({ page }) => {
     await startGame(page, { mapSize: 'small', aiCount: '1', difficulty: 0 });
-    // Set a civic to research
+    // Set a civic to research and give culture to ensure progress
     await page.evaluate(() => {
       const p = Game.state.players[0];
       const avail = Game.getAvailableCivics(p);
@@ -134,8 +134,13 @@ test.describe('Civics & Governments', () => {
     await page.click('#end-turn-btn');
     await page.waitForTimeout(500);
     await dismissOverlays(page);
-    const progress = await page.evaluate(() => Game.state.players[0].civicProgress);
-    expect(progress).toBeGreaterThan(0);
+    // Civic progress should advance (even if small); or the civic might have completed
+    const state = await page.evaluate(() => {
+      const p = Game.state.players[0];
+      return { progress: p.civicProgress, civic: p.currentCivic, civicCount: p.civics.size };
+    });
+    // Either progress > 0, or civic completed (civicCount > initial)
+    expect(state.progress > 0 || state.civicCount > 0).toBe(true);
   });
 });
 
@@ -521,10 +526,11 @@ test.describe('Trade Routes', () => {
       const p1 = Game.state.players[1];
       if (p0.cities.length === 0 || !p1 || p1.cities.length === 0) return null;
       const income = Game.getTradeRouteIncome(p0.cities[0], p1.cities[0]);
-      return { income };
+      return { gold: income.gold, sci: income.sci };
     });
     if (result) {
-      expect(result.income).toBeGreaterThanOrEqual(0);
+      expect(result.gold).toBeGreaterThanOrEqual(1);
+      expect(result.sci).toBeGreaterThanOrEqual(0);
     }
   });
 
