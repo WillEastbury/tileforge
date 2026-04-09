@@ -26,6 +26,14 @@ async function dismissOverlays(page) {
     });
     await expect(narOverlay).toBeHidden({ timeout: 5000 });
   }
+  // Dismiss narration overlay that may have appeared from prologue callback
+  await page.evaluate(() => {
+    if (typeof UI !== 'undefined' && UI.dismissNarration) UI.dismissNarration();
+    const narr = document.getElementById('narration-overlay');
+    if (narr) narr.classList.add('hidden');
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+  });
+  await page.waitForTimeout(200);
 }
 
 // Start a new game with default settings and dismiss all overlays
