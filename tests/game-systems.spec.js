@@ -1,5 +1,6 @@
 // @ts-check
 const { test, expect } = require('@playwright/test');
+const path = require('path');
 
 // ============================================================
 // Helper: dismiss any narrative/video overlay so tests can interact
@@ -30,8 +31,12 @@ async function dismissOverlays(page) {
 async function startGame(page, opts = {}) {
   await page.addInitScript(() => {
     window.__FORCE_CANVAS = true;
-    window.__SKIP_VIDEO = true;
-    HTMLVideoElement.prototype.play = function() { return Promise.resolve(); };
+  });
+  await page.route(/\.(mp4|webm)(\?.*)?$/, route => {
+    route.fulfill({
+      path: path.join(__dirname, 'fixtures', 'test-video.mp4'),
+      contentType: 'video/mp4'
+    });
   });
   await page.goto('/');
   await page.click('text=New Game');
@@ -451,8 +456,6 @@ test.describe('Video & Narration', () => {
   test('playVideo shows overlay and sets video src', async ({ page }) => {
     await startGame(page, { mapSize: 'small', aiCount: '1', difficulty: 0 });
     await page.evaluate(() => {
-      window.__SKIP_VIDEO = false; // re-enable for this test
-      HTMLVideoElement.prototype.load = function() {};
       UI.playVideo('assets/video/intro.mp4', () => {});
     });
     await expect(page.locator('#video-overlay')).not.toHaveClass(/hidden/, { timeout: 2000 });
@@ -504,9 +507,13 @@ test.describe('Video & Narration', () => {
     // the Start Game click handler (user gesture), not in a deferred setTimeout
     await page.addInitScript(() => {
       window.__FORCE_CANVAS = true;
-      // Stub video element to prevent real network loading
-      HTMLVideoElement.prototype.load = function() {};
       HTMLVideoElement.prototype.play = function() { return Promise.resolve(); };
+    });
+    await page.route(/\.(mp4|webm)(\?.*)?$/, route => {
+      route.fulfill({
+        path: path.join(__dirname, 'fixtures', 'test-video.mp4'),
+        contentType: 'video/mp4'
+      });
     });
     await page.goto('/');
     // Intercept video.play() to record WHEN it's called relative to the click
@@ -552,7 +559,12 @@ test.describe('Video & Narration', () => {
   test('prepareVideo starts play in gesture context, playIntroVideo wires callback', async ({ page }) => {
     await page.addInitScript(() => {
       window.__FORCE_CANVAS = true;
-      HTMLVideoElement.prototype.load = function() {};
+    });
+    await page.route(/\.(mp4|webm)(\?.*)?$/, route => {
+      route.fulfill({
+        path: path.join(__dirname, 'fixtures', 'test-video.mp4'),
+        contentType: 'video/mp4'
+      });
     });
     await page.goto('/');
     // Spy on video.play
@@ -616,7 +628,12 @@ test.describe('Video & Narration', () => {
   test('video attempts unmuted playback, falls back to muted', async ({ page }) => {
     await page.addInitScript(() => {
       window.__FORCE_CANVAS = true;
-      HTMLVideoElement.prototype.load = function() {};
+    });
+    await page.route(/\.(mp4|webm)(\?.*)?$/, route => {
+      route.fulfill({
+        path: path.join(__dirname, 'fixtures', 'test-video.mp4'),
+        contentType: 'video/mp4'
+      });
     });
     await page.goto('/');
     // Make first play() reject (simulating autoplay block), second succeed
@@ -645,8 +662,6 @@ test.describe('Video & Narration', () => {
   test('video playback pauses background music and resumes on skip', async ({ page }) => {
     await startGame(page, { mapSize: 'small', aiCount: '1', difficulty: 0 });
     const result = await page.evaluate(() => {
-      window.__SKIP_VIDEO = false; // re-enable video for this test
-      HTMLVideoElement.prototype.load = function() {};
       if (!UI.musicPlayer) UI.initMusic();
       UI.musicEnabled = true;
       // Make musicPlayer appear to be playing

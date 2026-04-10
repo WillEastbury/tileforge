@@ -1,5 +1,6 @@
 // @ts-check
 const { test, expect } = require('@playwright/test');
+const path = require('path');
 
 // ============================================================
 // Intro Audio/Video/Narration Tests
@@ -11,11 +12,14 @@ test.describe('Intro Audio & Video', () => {
 
   test.beforeEach(async ({ page }) => {
     // Force Canvas2D mode (headless has no WebGL)
-    // Stub video.play() to prevent real video loading/buffering in tests
     await page.addInitScript(() => {
       window.__FORCE_CANVAS = true;
-      window.__SKIP_VIDEO = true;
-      HTMLVideoElement.prototype.play = function() { return Promise.resolve(); };
+    });
+    await page.route(/\.(mp4|webm)(\?.*)?$/, route => {
+      route.fulfill({
+        path: path.join(__dirname, 'fixtures', 'test-video.mp4'),
+        contentType: 'video/mp4'
+      });
     });
   });
 

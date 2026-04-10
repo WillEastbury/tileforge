@@ -2398,7 +2398,7 @@ const UI = {
   prepareVideo(src, callback) {
     const overlay = document.getElementById('video-overlay');
     const video = document.getElementById('game-video');
-    if (!overlay || !video || window.__SKIP_VIDEO) { if (callback) callback(); return; }
+    if (!overlay || !video) { if (callback) callback(); return; }
     this._videoCallback = callback;
     this._videoPrepared = true;
     // Mute background music while video plays
@@ -2430,7 +2430,7 @@ const UI = {
     }
     const overlay = document.getElementById('video-overlay');
     const video = document.getElementById('game-video');
-    if (!overlay || !video || window.__SKIP_VIDEO) { if (callback) callback(); return; }
+    if (!overlay || !video) { if (callback) callback(); return; }
     this._videoCallback = callback;
     // Mute background music while video plays
     if (this.musicPlayer && !this.musicPlayer.paused) {

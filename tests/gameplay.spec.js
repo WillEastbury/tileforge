@@ -1,5 +1,6 @@
 // @ts-check
 const { test, expect } = require('@playwright/test');
+const path = require('path');
 
 // ============================================================
 // Helper: dismiss any narrative/video overlay so tests can interact
@@ -40,8 +41,12 @@ async function dismissOverlays(page) {
 async function startGame(page, opts = {}) {
   await page.addInitScript(() => {
     window.__FORCE_CANVAS = true;
-    window.__SKIP_VIDEO = true;
-    HTMLVideoElement.prototype.play = function() { return Promise.resolve(); };
+  });
+  await page.route(/\.(mp4|webm)(\?.*)?$/, route => {
+    route.fulfill({
+      path: path.join(__dirname, 'fixtures', 'test-video.mp4'),
+      contentType: 'video/mp4'
+    });
   });
   await page.goto('/');
   await expect(page.locator('#main-menu')).toHaveClass(/active/);
